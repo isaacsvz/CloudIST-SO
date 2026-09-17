@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-
+#include <string.h>
 #include "parser.h"
 #include "datacenter.h"
 #include "constants.h"
@@ -25,9 +25,15 @@ int main(int argc, char **argv)
 	if (parse_size_t_arg(argv[1], &servers) != 0 ||
 		parse_size_t_arg(argv[2], &ram) != 0 ||
 		parse_size_t_arg(argv[3], &disk) != 0 ||
-		parse_double_arg(argv[4], &cpu) != 0)
+		parse_double_arg(argv[4], &cpu) != 0) //(NEW)verifica se foi introduzido o input dir
 	{
 		fprintf(stderr, "Invalid command line arguments.\n");
+		return 1;
+	}
+
+	if (!path_exists(argv[5]))
+	{
+		fprintf(stderr, "Invalid input directory.\n"); //(NEW)
 		return 1;
 	}
 
