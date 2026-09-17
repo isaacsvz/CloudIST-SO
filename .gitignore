@@ -7,3 +7,9 @@
 
 # Executable 
 cloudIST
+
+# othera
+*.Identifier
+
+#testing stuff
+/teste
