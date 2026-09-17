@@ -33,7 +33,7 @@ int main(int argc, char **argv)
 
 	if (!path_exists(argv[5]))
 	{
-		fprintf(stderr, "Invalid input directory.\n"); //(NEW)
+		fprintf(stderr, "Invalid input directory.\n");
 		return 1;
 	}
 
