@@ -9,7 +9,7 @@
 cloudIST
 
 # othera
-*.Identifier
+*:Zone.Identifier
 
 #testing stuff
 /teste
