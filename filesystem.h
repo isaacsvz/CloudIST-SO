@@ -35,4 +35,15 @@ int file_exists(const char *path);
  */
 int absolute_path(const char *path, char *buffer, size_t size);
 
+//(NEW)
+/**
+ * @brief Transfers the contents of the conf file to the stdin
+ *
+ * @param conf_fd file descriptior of the conf file
+ * @return 0 if the transfer was unsucceful
+ * @return otherwise
+ *
+ */
+int confToStdin(int conf_fd);
+
 #endif // FILESYSTEM__H

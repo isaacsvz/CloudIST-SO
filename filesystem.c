@@ -10,7 +10,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
-int path_exists(const char *path){
+int path_exists(const char *path)
+{
   struct stat st;
 
   if (stat(path, &st) != 0)
@@ -19,7 +20,8 @@ int path_exists(const char *path){
   return S_ISDIR(st.st_mode);
 }
 
-int file_exists(const char *path){
+int file_exists(const char *path)
+{
   struct stat st;
 
   if (stat(path, &st) != 0)
@@ -28,13 +30,15 @@ int file_exists(const char *path){
   return S_ISREG(st.st_mode);
 }
 
-int absolute_path(const char *path, char *buffer, size_t size){
+int absolute_path(const char *path, char *buffer, size_t size)
+{
   char *resolved = realpath(path, NULL);
 
   if (resolved == NULL)
     return 1;
 
-  if (strlen(resolved) >= size) {
+  if (strlen(resolved) >= size)
+  {
     free(resolved);
     return 1;
   }
@@ -43,4 +47,8 @@ int absolute_path(const char *path, char *buffer, size_t size){
 
   free(resolved);
   return 0;
+}
+
+int confToStdin(int conf_fd)
+{
 }
