@@ -48,19 +48,20 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	char *path = argv[5];
-	int worked = confToStdin(path);
-	printf("%d", worked);
+	char file_path[256];
+	// confToStdin(path);
+	snprintf(file_path, sizeof(file_path), "%s1.conf", argv[5]);
+	int fd = my_open(file_path);
 
 	while (1)
 	{
-		switch (get_next_command(STDIN_FILENO))
+		switch (get_next_command(fd))
 		{
 		case CMD_DEFINE:
 		{
 			VMType vmtype;
 
-			if (parse_define(STDIN_FILENO, &vmtype) != 0)
+			if (parse_define(fd, &vmtype) != 0)
 			{
 				fprintf(stderr, "Invalid define command. See H (help) for usage.\n");
 				continue;

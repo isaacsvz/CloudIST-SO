@@ -35,15 +35,12 @@ int file_exists(const char *path);
  */
 int absolute_path(const char *path, char *buffer, size_t size);
 
-//(NEW)
 /**
- * @brief Transfers the contents of the conf file to the stdin
+ * @brief Opens the file to be read
  *
- * @param file name of the conf file
- * @return 0 if the transfer was unsucceful
- * @return 1 otherwiseS
- *
+ * @param path  path of the file
+ * @return int  file descriptor
  */
-int confToStdin(char *path);
+int my_open(char *path);
 
 #endif // FILESYSTEM__H
