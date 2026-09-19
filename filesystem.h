@@ -39,11 +39,11 @@ int absolute_path(const char *path, char *buffer, size_t size);
 /**
  * @brief Transfers the contents of the conf file to the stdin
  *
- * @param conf_fd file descriptior of the conf file
+ * @param file name of the conf file
  * @return 0 if the transfer was unsucceful
- * @return otherwise
+ * @return 1 otherwiseS
  *
  */
-int confToStdin(int conf_fd);
+int confToStdin(char *path);
 
 #endif // FILESYSTEM__H

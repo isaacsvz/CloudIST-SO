@@ -48,6 +48,10 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	char *path = argv[5];
+	int worked = confToStdin(path);
+	printf("%d", worked);
+
 	while (1)
 	{
 		switch (get_next_command(STDIN_FILENO))
