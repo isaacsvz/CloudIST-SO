@@ -49,7 +49,6 @@ int main(int argc, char **argv)
 	}
 
 	char file_path[256];
-	// confToStdin(path);
 	snprintf(file_path, sizeof(file_path), "%s1.conf", argv[5]);
 	int fd = my_open(file_path);
 
@@ -82,7 +81,7 @@ int main(int argc, char **argv)
 		{
 			Reservation reservation = {0};
 
-			size_t num_items = parse_reserve(STDIN_FILENO, &reservation, MAX_RESERVATIONS_ITEMS);
+			size_t num_items = parse_reserve(fd, &reservation, MAX_RESERVATIONS_ITEMS);
 
 			if (num_items == 0)
 			{
@@ -104,7 +103,7 @@ int main(int argc, char **argv)
 		case CMD_EXECUTE:
 			char id[MAX_STRING_SIZE];
 
-			if (parse_execute(STDIN_FILENO, id) != 0)
+			if (parse_execute(fd, id) != 0)
 			{
 				fprintf(stderr, "Invalid execute command. See H (help) for usage.\n");
 				continue;
@@ -132,7 +131,7 @@ int main(int argc, char **argv)
 		case CMD_WAIT:
 			unsigned int delay;
 
-			if (parse_wait(STDIN_FILENO, &delay) != 0)
+			if (parse_wait(fd, &delay) != 0)
 			{
 				fprintf(stderr, "Invalid wait command. See H (help) for usage.\n");
 				continue;
