@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <dirent.h>
 #include "parser.h"
 #include "datacenter.h"
 #include "constants.h"
@@ -48,120 +49,146 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	char file_path[256];
-	snprintf(file_path, sizeof(file_path), "%s1.conf", argv[5]);
-	int fd = my_open(file_path);
+	// Cria array de ponteiros para structs dirent
+	struct dirent **file_name_list;
+	int n = scandir(argv[5], &file_name_list, filter_dots, alphasort);
 
-	while (1)
+	if (n < 0)
 	{
-		switch (get_next_command(fd))
+		perror("Failed to scan input directory");
+		return EXIT_FAILURE;
+	}
+
+	for (int i = 0; i < n; i++)
+	{
+
+		// Concatenação da dir com o ficheiro para criar o file_path para o open
+		// 256 + 1 -> por causa da barra
+		char file_path[257];
+		snprintf(file_path, sizeof(file_path), "%s/%s", argv[5], file_name_list[i]->d_name);
+		int fd = my_open(file_path);
+		int runningfile = 1;
+		while (runningfile)
 		{
-		case CMD_DEFINE:
-		{
-			VMType vmtype;
-
-			if (parse_define(fd, &vmtype) != 0)
+			switch (get_next_command(fd))
 			{
-				fprintf(stderr, "Invalid define command. See H (help) for usage.\n");
-				continue;
+			case CMD_DEFINE:
+			{
+				VMType vmtype;
+
+				if (parse_define(fd, &vmtype) != 0)
+				{
+					fprintf(stderr, "Invalid define command. See H (help) for usage.\n");
+					continue;
+				}
+
+				if (datacenter_define_VM(&dc, &vmtype) != 0)
+				{
+					fprintf(stderr, "Failed to define VM.\n");
+					continue;
+				}
+
+				printf("VM successfully defined!\n");
+
+				break;
 			}
 
-			if (datacenter_define_VM(&dc, &vmtype) != 0)
+			case CMD_RESERVE:
 			{
-				fprintf(stderr, "Failed to define VM.\n");
-				continue;
+				Reservation reservation = {0};
+
+				size_t num_items = parse_reserve(fd, &reservation, MAX_RESERVATIONS_ITEMS);
+
+				if (num_items == 0)
+				{
+					fprintf(stderr, "Invalid reserve command. See H (help) for usage.\n");
+					continue;
+				}
+
+				if (datacenter_reserve(&dc, &reservation) != 0)
+				{
+					fprintf(stderr, "Failed to reserve VMs.\n");
+					continue;
+				}
+
+				printf("Reservation made successfully!\n");
+
+				break;
 			}
 
-			printf("VM successfully defined!\n");
+			case CMD_EXECUTE:
+				char id[MAX_STRING_SIZE];
 
-			break;
-		}
+				if (parse_execute(fd, id) != 0)
+				{
+					fprintf(stderr, "Invalid execute command. See H (help) for usage.\n");
+					continue;
+				}
 
-		case CMD_RESERVE:
-		{
-			Reservation reservation = {0};
+				if (datacenter_execute(&dc, id) != 0)
+				{
+					fprintf(stderr, "Failed to execute reservation.\n");
+					continue;
+				}
 
-			size_t num_items = parse_reserve(fd, &reservation, MAX_RESERVATIONS_ITEMS);
+				printf("Finished reservation execution!\n");
 
-			if (num_items == 0)
-			{
-				fprintf(stderr, "Invalid reserve command. See H (help) for usage.\n");
-				continue;
+				break;
+
+			case CMD_LIST:
+				if (datacenter_list(&dc) != 0)
+				{
+					fprintf(stderr, "Failed to list VMs.\n");
+					continue;
+				}
+
+				break;
+
+			case CMD_WAIT:
+				unsigned int delay;
+
+				if (parse_wait(fd, &delay) != 0)
+				{
+					fprintf(stderr, "Invalid wait command. See H (help) for usage.\n");
+					continue;
+				}
+
+				datacenter_wait(delay);
+				break;
+
+			case CMD_INVALID:
+				fprintf(stderr, "Invalid Command. See H (help) for usage.\n");
+				break;
+
+			case CMD_HELP:
+				printf(
+					"Spaces between arguments are allowed, but not after command end.\n"
+					"Available commands:\n"
+					" D <VM_TYPE_ID> <INPUT_FOLDER> <EXECUTABLE_PATH> <RAM_NEEDED> <DISK_NEEDED> <VCPU_NEEDED_COUNT>\n"
+					" R <RESERVATION_ID> [<VM_TYPE_ID> <COUNT> <SERVER_ID>]+\n"
+					" A <RESERVATION_ID>\n"
+					" L\n"
+					" E <DELAY_MS>\n"
+					" H\n");
+				break;
+
+			case CMD_EMPTY:
+				break;
+
+			case EOC:
+				close(fd);
+				runningfile = 0;
+				break;
 			}
-
-			if (datacenter_reserve(&dc, &reservation) != 0)
-			{
-				fprintf(stderr, "Failed to reserve VMs.\n");
-				continue;
-			}
-
-			printf("Reservation made successfully!\n");
-
-			break;
-		}
-
-		case CMD_EXECUTE:
-			char id[MAX_STRING_SIZE];
-
-			if (parse_execute(fd, id) != 0)
-			{
-				fprintf(stderr, "Invalid execute command. See H (help) for usage.\n");
-				continue;
-			}
-
-			if (datacenter_execute(&dc, id) != 0)
-			{
-				fprintf(stderr, "Failed to execute reservation.\n");
-				continue;
-			}
-
-			printf("Finished reservation execution!\n");
-
-			break;
-
-		case CMD_LIST:
-			if (datacenter_list(&dc) != 0)
-			{
-				fprintf(stderr, "Failed to list VMs.\n");
-				continue;
-			}
-
-			break;
-
-		case CMD_WAIT:
-			unsigned int delay;
-
-			if (parse_wait(fd, &delay) != 0)
-			{
-				fprintf(stderr, "Invalid wait command. See H (help) for usage.\n");
-				continue;
-			}
-
-			datacenter_wait(delay);
-			break;
-
-		case CMD_INVALID:
-			fprintf(stderr, "Invalid Command. See H (help) for usage.\n");
-			break;
-
-		case CMD_HELP:
-			printf(
-				"Spaces between arguments are allowed, but not after command end.\n"
-				"Available commands:\n"
-				" D <VM_TYPE_ID> <INPUT_FOLDER> <EXECUTABLE_PATH> <RAM_NEEDED> <DISK_NEEDED> <VCPU_NEEDED_COUNT>\n"
-				" R <RESERVATION_ID> [<VM_TYPE_ID> <COUNT> <SERVER_ID>]+\n"
-				" A <RESERVATION_ID>\n"
-				" L\n"
-				" E <DELAY_MS>\n"
-				" H\n");
-			break;
-
-		case CMD_EMPTY:
-			break;
-
-		case EOC:
-			datacenter_destroy(&dc);
-			return 0;
 		}
 	}
+
+	for (int i = 0; i < n; i++)
+	{
+		free(file_name_list[i]);
+	}
+	free(file_name_list);
+
+	datacenter_destroy(&dc);
+	return 0;
 }

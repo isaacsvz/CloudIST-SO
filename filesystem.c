@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <string.h>
+#include <dirent.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -53,4 +54,13 @@ int absolute_path(const char *path, char *buffer, size_t size)
 int my_open(char *path)
 {
   return open(path, O_RDONLY);
+}
+
+int filter_dots(const struct dirent *entry)
+{
+  if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+  {
+    return 0; // Excluir da lista
+  }
+  return 1; // Incluir na lista
 }

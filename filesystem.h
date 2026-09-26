@@ -2,6 +2,7 @@
 #define FILESYSTEM__H
 
 #include <stddef.h>
+#include <dirent.h>
 
 /**
  * Checks whether a path exists and is a directory.
@@ -42,5 +43,7 @@ int absolute_path(const char *path, char *buffer, size_t size);
  * @return int  file descriptor
  */
 int my_open(char *path);
+
+int filter_dots(const struct dirent *entry);
 
 #endif // FILESYSTEM__H

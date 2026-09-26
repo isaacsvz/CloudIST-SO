@@ -11,7 +11,7 @@
                 "100",
                 "500",
                 "60",
-                "teste/"
+                "teste"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
