@@ -113,6 +113,17 @@ int main(int argc, char **argv)
 
 				printf("Reservation made successfully!\n");
 
+				// TODO - transferir_inputs aqui maybe
+				// ver onde criar as pastas de cada vm por id
+				// algo along the lines of: por cada vm em reservation.vms[i]
+				// pegar no vms[i].type.input_folder e fazer "transferir_inputs(dessa string)"
+				// entre outras funções auxiliares para criar as pastas e etc
+
+				for (size_t vm_index = 0; vm_index < reservation.num_vms; i++)
+				{
+					transferir_inputs(reservation.vms[vm_index]->type->input_folder);
+				}
+
 				break;
 			}
 

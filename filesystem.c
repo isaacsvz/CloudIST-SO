@@ -65,37 +65,46 @@ int filter_dots(const struct dirent *entry)
   return 1; // Incluir na lista
 }
 
-struct dirent *percorrer(char *dirname)
+int percorrer(char *dirname)
 {
   DIR *dirp;
   struct dirent *dp;
   dirp = opendir(dirname);
   if (dirname == NULL)
-    return NULL; // é para abordar se 1 ficheiro falhar?
+  {
+    return -1;
+  }
+
   if (dirp == NULL)
   {
     perror("opendir failed");
-    return NULL;
+    percorrer(NULL);
   }
 
   for (;;)
   {
     dp = readdir(dirp);
-    if (dp == NULL)
+    if (dp == NULL && filter_dots(dp))
     {
-      return;
+      break;
     }
 
-    else if (!opendir(dp->d_name))
+    // atualiza o path depois de descer uma diretoria
+    char newpath[257];
+    snprintf(newpath, 257, "%s/%s", dirname, dp->d_name);
+
+    // opendir -> testa se é uma diretoria ou ficheiro
+    if (opendir(newpath) == NULL && filter_dots(dp))
     {
       // copiar
     }
 
-    else if (opendir(dp->d_name))
+    else if (opendir(newpath) && filter_dots(dp))
     {
-      percorrer(dp->d_name);
+      percorrer(newpath);
     };
   }
+  return 0;
 }
 
 int transferir_inputs(char *raiz)
@@ -105,4 +114,5 @@ int transferir_inputs(char *raiz)
     perror("Ocorreu um erro na cópia dos ficheiros");
     return -1;
   }
+  return 0;
 }

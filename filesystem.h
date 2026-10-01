@@ -46,4 +46,12 @@ int my_open(char *path);
 
 int filter_dots(const struct dirent *entry);
 
+/**
+ * @brief Copies the input files from the input directory to the respective VM's
+ *
+ * @param raiz input directory
+ * @return int
+ */
+int transferir_inputs(char *raiz);
+
 #endif // FILESYSTEM__H
