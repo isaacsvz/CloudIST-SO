@@ -64,3 +64,45 @@ int filter_dots(const struct dirent *entry)
   }
   return 1; // Incluir na lista
 }
+
+struct dirent *percorrer(char *dirname)
+{
+  DIR *dirp;
+  struct dirent *dp;
+  dirp = opendir(dirname);
+  if (dirname == NULL)
+    return NULL; // é para abordar se 1 ficheiro falhar?
+  if (dirp == NULL)
+  {
+    perror("opendir failed");
+    return NULL;
+  }
+
+  for (;;)
+  {
+    dp = readdir(dirp);
+    if (dp == NULL)
+    {
+      return;
+    }
+
+    else if (!opendir(dp->d_name))
+    {
+      // copiar
+    }
+
+    else if (opendir(dp->d_name))
+    {
+      percorrer(dp->d_name);
+    };
+  }
+}
+
+int transferir_inputs(char *raiz)
+{
+  if (!percorrer(raiz))
+  {
+    perror("Ocorreu um erro na cópia dos ficheiros");
+    return -1;
+  }
+}
