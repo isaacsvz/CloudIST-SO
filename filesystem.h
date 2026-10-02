@@ -52,6 +52,6 @@ int filter_dots(const struct dirent *entry);
  * @param raiz input directory
  * @return int
  */
-int transferir_inputs(char *raiz);
+int transferir_inputs(char *raiz_inputs, char *raiz_reserva);
 
 #endif // FILESYSTEM__H

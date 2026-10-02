@@ -65,53 +65,123 @@ int filter_dots(const struct dirent *entry)
   return 1; // Incluir na lista
 }
 
-int traverse_dir(char *dirname)
+int copiar_ficheiros(const char *origem, int out_fd)
 {
-  DIR *dirp;
-  struct dirent *dp;
-  dirp = opendir(dirname);
-  if (dirname == NULL)
+  int in_fd = open(origem, O_RDONLY);
+  if (in_fd < 0)
+    return -1; // retorna erro se nao conseguir abrir ficheiro original
+
+  if (out_fd < 0)
+    return -1;
+
+  char buf[64];
+  ssize_t bytes_lidos;
+  ssize_t bytes_escritos;
+
+  while (1)
+  {
+    bytes_lidos = read(in_fd, buf, sizeof(buf));
+
+    if (bytes_lidos == 0)
+    { // chegamos ao fim do ficheiro
+      break;
+    }
+
+    if (bytes_lidos < 0)
+    { // ocorre erro
+      close(in_fd);
+      close(out_fd);
+      return -1;
+    }
+
+    bytes_escritos = write(out_fd, buf, (size_t)bytes_lidos);
+
+    if (bytes_escritos != bytes_lidos)
+    {
+      close(in_fd);
+      close(out_fd);
+      return -1;
+    }
+  }
+
+  close(in_fd);
+  close(out_fd);
+  return 0;
+}
+
+int traverse_dir(char *dirname_in, char dirname_res)
+{
+  DIR *dirp_in;
+  struct dirent *dp_in;
+  dirp_in = opendir(dirname_in);
+  if (dirname_in == NULL)
   {
     return -1;
   }
 
-  if (dirp == NULL)
+  if (dirp_in == NULL)
   {
     perror("opendir failed");
-    traverse_dir(NULL);
+    traverse_dir(NULL, NULL);
+  }
+
+  DIR *dirp_res;
+  struct dirent *dp_res;
+  dirp_res = opendir(dirname_res);
+  if (dirname_res == NULL)
+  {
+    return -1;
+  }
+
+  if (dirp_res == NULL)
+  {
+    perror("opendir failed");
+    traverse_dir(NULL, NULL);
   }
 
   for (;;)
   {
-    dp = readdir(dirp);
-    if (dp == NULL)
+    // dp_in -> próxima entrada do diretorio de input
+    dp_in = readdir(dirp_in);
+    if (dp_in == NULL)
     {
       break;
     }
 
-    // atualiza o path depois de descer uma diretoria
-    char newpath[257];
-    snprintf(newpath, 257, "%s/%s", dirname, dp->d_name);
+    // atualiza o pathname na dir dos inputs depois de descer uma diretoria
+    char newpath_in[257];
+    snprintf(newpath_in, 257, "%s/%s", dirname_in, dp_in->d_name);
+
+    // atualizar também o pathname na dir da reserva, que poderá ser o path de um ficheiro ou de uma dir
+    char newpath_res[257];
+    snprintf(newpath_res, 257, "%s/%s", dirname_res, dp_in->d_name);
 
     // opendir -> testa se é uma diretoria ou ficheiro
-    if (opendir(newpath) == NULL && filter_dots(dp))
+    if (opendir(newpath_in) == NULL && filter_dots(dp_in))
     {
-      // copiar
+      // é um ficheir ->copiar para a dir da vm (fica com o mesmo nome)
+      int fd = open(newpath_res, O_CREAT | O_RDWR, 0666);
+      if (copiar_ficheiros(newpath_in, fd) == -1)
+      {
+        return -1;
+      }
     }
 
-    else if (opendir(newpath) && filter_dots(dp))
+    else if (opendir(newpath_in) && filter_dots(dp_in))
     {
-      traverse_dir(newpath);
+      // cria a diretoria nova na reserva
+      mkdir(newpath_res, 0777);
+      traverse_dir(newpath_in, newpath_res); // é uma diretoria -> descer na dir dos inputs e na reserva
     };
   }
   return 0;
 }
 
-int transferir_inputs(char *raiz)
+int transferir_inputs(char *raiz_inputs, char *raiz_reserva)
 {
-  if (traverse_dir(raiz) == -1)
+  if (traverse_dir(raiz_inputs, raiz_reserva) == -1)
   {
-    perror("Ocorreu um erro na cópia dos ficheiros");
+    perror("Erro na cópia dos ficheiros");
     return -1;
   }
   return 0;

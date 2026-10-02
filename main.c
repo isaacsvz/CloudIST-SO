@@ -121,7 +121,8 @@ int main(int argc, char **argv)
 
 				for (size_t vm_index = 0; vm_index < reservation.num_vms; vm_index++)
 				{
-					transferir_inputs(reservation.vms[vm_index]->type->input_folder);
+					char *input_folder = reservation.vms[vm_index]->type->input_folder;
+					transferir_inputs(input_folder);
 				}
 
 				break;
