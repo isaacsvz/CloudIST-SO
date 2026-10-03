@@ -101,7 +101,8 @@ int new_dir_reserve(char *reservation_id, char *dest_dir) {
     snprintf(dest_dir, MAX_PATH_SIZE, "%s/%s", RESERVATIONS_PATHNAME,
              reservation_id);
     if (mkdir(dest_dir, 0777) < 0) {
-        perror("Erro ao criar diretoria da reserva");
+        printf("Unable to create the directory for the reserve: ");
+        printf("%s\n", reservation_id);
         return -1;
     };
     return 0;
@@ -110,7 +111,8 @@ int new_dir_reserve(char *reservation_id, char *dest_dir) {
 int new_dir_vm(char *vm_id, char *res_path, char *dest_dir) {
     snprintf(dest_dir, MAX_PATH_SIZE, "%s/%s", res_path, vm_id);
     if (mkdir(dest_dir, 0777) < 0) {
-        perror("Erro ao criar diretoria da VM");
+        printf("Unable to create the directory for the VM: ");
+        printf("%s\n", vm_id);
         return -1;
     };
     return 0;
@@ -120,24 +122,17 @@ int traverse_dir(char *dirname_in, char *dirname_res) {
     DIR *dirp_in;
     struct dirent *dp_in;
     dirp_in = opendir(dirname_in);
-    if (dirname_in == NULL) {
-        return -1;
-    }
-
     if (dirp_in == NULL) {
         perror("opendir failed");
-        traverse_dir(NULL, NULL);
+        return -1;
     }
 
     DIR *dirp_res;
     dirp_res = opendir(dirname_res);
-    if (dirname_res == NULL) {
-        return -1;
-    }
 
     if (dirp_res == NULL) {
         perror("opendir failed");
-        traverse_dir(NULL, NULL);
+        return -1;
     }
 
     for (;;) {
@@ -151,26 +146,43 @@ int traverse_dir(char *dirname_in, char *dirname_res) {
         char newpath_in[257];
         snprintf(newpath_in, 257, "%s/%s", dirname_in, dp_in->d_name);
 
-        // atualizar também o pathname na dir da reserva, que poderá ser o path
-        // de um ficheiro ou de uma dir
+        /*
+        atualizar também o pathname da dir da reserva, que poderá ser
+        o path de um ficheiro ou de uma dir
+        */
         char newpath_res[257];
         snprintf(newpath_res, 257, "%s/%s", dirname_res, dp_in->d_name);
 
         // opendir -> testa se é uma diretoria ou ficheiro
         if (opendir(newpath_in) == NULL && filter_dots(dp_in)) {
-            // é um ficheir ->copiar para a dir da vm (fica com o mesmo nome)
+            // é um ficheiro -> copiar para a dir da vm (fica com o mesmo nome)
             int fd = open(newpath_res, O_CREAT | O_RDWR, 0666);
+
+            if (fd < 0) {
+                printf("Unable to open file %s", newpath_res);
+                return -1;
+            }
+
             if (copiar_ficheiros(newpath_in, fd) == -1) {
+                printf("File copying error: ");
+                printf("%s\n", newpath_in);
                 return -1;
             }
         }
 
         else if (opendir(newpath_in) && filter_dots(dp_in)) {
-            // cria a diretoria nova na reserva
-            mkdir(newpath_res, 0777);
-            traverse_dir(newpath_in,
-                         newpath_res); // é uma diretoria -> descer na dir dos
-                                       // inputs e na reserva
+            /*
+            é uma diretoria -> cria a diretoria na dir da vm
+            e entra nela para a próxima chamada traverse
+            */
+            if (mkdir(newpath_res, 0777) < 0) {
+                printf("Directory cloning error: ");
+                printf("%s\n", newpath_in);
+                return -1;
+            };
+            if (traverse_dir(newpath_in, newpath_res) == -1) {
+                return -1;
+            };
         };
     }
     return 0;
@@ -178,7 +190,8 @@ int traverse_dir(char *dirname_in, char *dirname_res) {
 
 int transferir_inputs(char *raiz_inputs, char *raiz_reserva) {
     if (traverse_dir(raiz_inputs, raiz_reserva) == -1) {
-        perror("Erro na cópia dos ficheiros");
+        printf("Unable to clone input data into the reserve's directory");
+        printf("%s to %s\n", raiz_inputs, raiz_reserva);
         return -1;
     }
     return 0;

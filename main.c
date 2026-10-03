@@ -108,14 +108,20 @@ int main(int argc, char **argv) {
 
                 // criar pasta da reserva
                 char reserve_dir[MAX_PATH_SIZE];
-                new_dir_reserve((&reservation)->id, reserve_dir);
+                if (new_dir_reserve((&reservation)->id, reserve_dir) < 0) {
+                    return -1;
+                }
 
                 for (size_t vm_index = 0; vm_index < reservation.num_vms;
                      vm_index++) {
                     VM *vm = reservation.vms[vm_index];
                     char vm_dir[MAX_PATH_SIZE];
-                    new_dir_vm(vm->id, reserve_dir, vm_dir);
-                    transferir_inputs(vm->type->input_folder, vm_dir);
+                    if (new_dir_vm(vm->id, reserve_dir, vm_dir) < 0) {
+                        return -1;
+                    }
+                    if (transferir_inputs(vm->type->input_folder, vm_dir)) {
+                        return -1;
+                    };
                 }
 
                 break;
