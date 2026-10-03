@@ -1,8 +1,8 @@
 #ifndef FILESYSTEM__H
 #define FILESYSTEM__H
 
-#include <stddef.h>
 #include <dirent.h>
+#include <stddef.h>
 
 /**
  * Checks whether a path exists and is a directory.
@@ -53,5 +53,21 @@ int filter_dots(const struct dirent *entry);
  * @return int
  */
 int transferir_inputs(char *raiz_inputs, char *raiz_reserva);
+
+/**
+ * @brief creates a directory for the reservation
+ *
+ * @param reservation_id    name of the directory
+ * @return                  int
+ */
+int new_dir_reserve(char *reservation_id, char *dest_dir);
+
+/**
+ * @brief  creates a directory for the reservation
+ *
+ * @param vm_id     id of the VM -> name of the directory
+ * @return int
+ */
+int new_dir_vm(char *vm_id, char *res_path, char *dest_dir);
 
 #endif // FILESYSTEM__H

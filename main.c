@@ -1,206 +1,199 @@
+#include "constants.h"
+#include "datacenter.h"
+#include "parser.h"
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <dirent.h>
-#include "parser.h"
-#include "datacenter.h"
-#include "constants.h"
+#include <unistd.h>
 
-int main(int argc, char **argv)
-{
-	DataCenter dc;
-	datacenter_init(&dc);
+int main(int argc, char **argv) {
+    DataCenter dc;
+    datacenter_init(&dc);
 
-	if (argc != 6)
-	{
-		fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir>\n", argv[0]);
-		return 1;
-	}
+    if (argc != 6) {
+        fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir>\n",
+                argv[0]);
+        return 1;
+    }
 
-	size_t servers;
-	size_t ram;
-	size_t disk;
-	double cpu;
+    size_t servers;
+    size_t ram;
+    size_t disk;
+    double cpu;
 
-	if (parse_size_t_arg(argv[1], &servers) != 0 ||
-		parse_size_t_arg(argv[2], &ram) != 0 ||
-		parse_size_t_arg(argv[3], &disk) != 0 ||
-		parse_double_arg(argv[4], &cpu) != 0) //(NEW)verifica se foi introduzido o input dir
-	{
-		fprintf(stderr, "Invalid command line arguments.\n");
-		return 1;
-	}
+    if (parse_size_t_arg(argv[1], &servers) != 0 ||
+        parse_size_t_arg(argv[2], &ram) != 0 ||
+        parse_size_t_arg(argv[3], &disk) != 0 ||
+        parse_double_arg(argv[4], &cpu) !=
+            0) //(NEW)verifica se foi introduzido o input dir
+    {
+        fprintf(stderr, "Invalid command line arguments.\n");
+        return 1;
+    }
 
-	if (!path_exists(argv[5]))
-	{
-		fprintf(stderr, "Invalid input directory.\n");
-		return 1;
-	}
+    if (!path_exists(argv[5])) {
+        fprintf(stderr, "Invalid input directory.\n");
+        return 1;
+    }
 
-	Resources resources = {
-		.ram = ram,
-		.disk = disk,
-		.cpu = cpu};
+    Resources resources = {.ram = ram, .disk = disk, .cpu = cpu};
 
-	if (datacenter_configure(&dc, servers, &resources) != 0)
-	{
-		fprintf(stderr, "Failed to configure Data Center.\n");
-		return 1;
-	}
+    if (datacenter_configure(&dc, servers, &resources) != 0) {
+        fprintf(stderr, "Failed to configure Data Center.\n");
+        return 1;
+    }
 
-	// Cria array de ponteiros para structs dirent
-	struct dirent **file_name_list;
-	int n = scandir(argv[5], &file_name_list, filter_dots, alphasort);
+    // Cria array de ponteiros para structs dirent
+    struct dirent **file_name_list;
+    int n = scandir(argv[5], &file_name_list, filter_dots, alphasort);
 
-	if (n < 0)
-	{
-		perror("Failed to scan input directory");
-		return EXIT_FAILURE;
-	}
+    if (n < 0) {
+        perror("Failed to scan input directory");
+        return EXIT_FAILURE;
+    }
 
-	for (int i = 0; i < n; i++)
-	{
+    for (int i = 0; i < n; i++) {
 
-		// Concatenação da dir com o ficheiro para criar o file_path para o open
-		// 256 + 1 -> por causa da barra
-		char file_path[257];
-		snprintf(file_path, sizeof(file_path), "%s/%s", argv[5], file_name_list[i]->d_name);
-		int fd = my_open(file_path);
-		int runningfile = 1;
-		while (runningfile)
-		{
-			switch (get_next_command(fd))
-			{
-			case CMD_DEFINE:
-			{
-				VMType vmtype;
+        // Concatenação da dir com o ficheiro para criar o file_path para o open
+        // 256 + 1 -> por causa da barra
+        char file_path[257];
+        snprintf(file_path, sizeof(file_path), "%s/%s", argv[5],
+                 file_name_list[i]->d_name);
+        int fd = my_open(file_path);
+        int runningfile = 1;
+        while (runningfile) {
+            switch (get_next_command(fd)) {
+            case CMD_DEFINE: {
+                VMType vmtype;
 
-				if (parse_define(fd, &vmtype) != 0)
-				{
-					fprintf(stderr, "Invalid define command. See H (help) for usage.\n");
-					continue;
-				}
+                if (parse_define(fd, &vmtype) != 0) {
+                    fprintf(
+                        stderr,
+                        "Invalid define command. See H (help) for usage.\n");
+                    continue;
+                }
 
-				if (datacenter_define_VM(&dc, &vmtype) != 0)
-				{
-					fprintf(stderr, "Failed to define VM.\n");
-					continue;
-				}
+                if (datacenter_define_VM(&dc, &vmtype) != 0) {
+                    fprintf(stderr, "Failed to define VM.\n");
+                    continue;
+                }
 
-				printf("VM successfully defined!\n");
+                printf("VM successfully defined!\n");
 
-				break;
-			}
+                break;
+            }
 
-			case CMD_RESERVE:
-			{
-				Reservation reservation = {0};
+            case CMD_RESERVE: {
+                Reservation reservation = {0};
 
-				size_t num_items = parse_reserve(fd, &reservation, MAX_RESERVATIONS_ITEMS);
+                size_t num_items =
+                    parse_reserve(fd, &reservation, MAX_RESERVATIONS_ITEMS);
 
-				if (num_items == 0)
-				{
-					fprintf(stderr, "Invalid reserve command. See H (help) for usage.\n");
-					continue;
-				}
+                if (num_items == 0) {
+                    fprintf(
+                        stderr,
+                        "Invalid reserve command. See H (help) for usage.\n");
+                    continue;
+                }
 
-				if (datacenter_reserve(&dc, &reservation) != 0)
-				{
-					fprintf(stderr, "Failed to reserve VMs.\n");
-					continue;
-				}
+                if (datacenter_reserve(&dc, &reservation) != 0) {
+                    fprintf(stderr, "Failed to reserve VMs.\n");
+                    continue;
+                }
 
-				printf("Reservation made successfully!\n");
+                printf("Reservation made successfully!\n");
 
-				// TODO - transferir_inputs aqui maybe
-				// ver onde criar as pastas de cada vm por id
-				// algo along the lines of: por cada vm em reservation.vms[i]
-				// pegar no vms[i].type.input_folder e fazer "transferir_inputs(dessa string)"
-				// entre outras funções auxiliares para criar as pastas e etc
+                // TODO - transferir_inputs aqui maybe
 
-				for (size_t vm_index = 0; vm_index < reservation.num_vms; vm_index++)
-				{
-					char *input_folder = reservation.vms[vm_index]->type->input_folder;
-					transferir_inputs(input_folder);
-				}
+                // criar pasta da reserva
+                char reserve_dir[MAX_PATH_SIZE];
+                new_dir_reserve((&reservation)->id, reserve_dir);
 
-				break;
-			}
+                for (size_t vm_index = 0; vm_index < reservation.num_vms;
+                     vm_index++) {
+                    VM *vm = reservation.vms[vm_index];
+                    char vm_dir[MAX_PATH_SIZE];
+                    new_dir_vm(vm->id, reserve_dir, vm_dir);
+                    transferir_inputs(vm->type->input_folder, vm_dir);
+                }
 
-			case CMD_EXECUTE:
-				char id[MAX_STRING_SIZE];
+                break;
+            }
 
-				if (parse_execute(fd, id) != 0)
-				{
-					fprintf(stderr, "Invalid execute command. See H (help) for usage.\n");
-					continue;
-				}
+            case CMD_EXECUTE:
+                char id[MAX_STRING_SIZE];
 
-				if (datacenter_execute(&dc, id) != 0)
-				{
-					fprintf(stderr, "Failed to execute reservation.\n");
-					continue;
-				}
+                if (parse_execute(fd, id) != 0) {
+                    fprintf(
+                        stderr,
+                        "Invalid execute command. See H (help) for usage.\n");
+                    continue;
+                }
 
-				printf("Finished reservation execution!\n");
+                if (datacenter_execute(&dc, id) != 0) {
+                    fprintf(stderr, "Failed to execute reservation.\n");
+                    continue;
+                }
 
-				break;
+                printf("Finished reservation execution!\n");
 
-			case CMD_LIST:
-				if (datacenter_list(&dc) != 0)
-				{
-					fprintf(stderr, "Failed to list VMs.\n");
-					continue;
-				}
+                break;
 
-				break;
+            case CMD_LIST:
+                if (datacenter_list(&dc) != 0) {
+                    fprintf(stderr, "Failed to list VMs.\n");
+                    continue;
+                }
 
-			case CMD_WAIT:
-				unsigned int delay;
+                break;
 
-				if (parse_wait(fd, &delay) != 0)
-				{
-					fprintf(stderr, "Invalid wait command. See H (help) for usage.\n");
-					continue;
-				}
+            case CMD_WAIT:
+                unsigned int delay;
 
-				datacenter_wait(delay);
-				break;
+                if (parse_wait(fd, &delay) != 0) {
+                    fprintf(stderr,
+                            "Invalid wait command. See H (help) for usage.\n");
+                    continue;
+                }
 
-			case CMD_INVALID:
-				fprintf(stderr, "Invalid Command. See H (help) for usage.\n");
-				break;
+                datacenter_wait(delay);
+                break;
 
-			case CMD_HELP:
-				printf(
-					"Spaces between arguments are allowed, but not after command end.\n"
-					"Available commands:\n"
-					" D <VM_TYPE_ID> <INPUT_FOLDER> <EXECUTABLE_PATH> <RAM_NEEDED> <DISK_NEEDED> <VCPU_NEEDED_COUNT>\n"
-					" R <RESERVATION_ID> [<VM_TYPE_ID> <COUNT> <SERVER_ID>]+\n"
-					" A <RESERVATION_ID>\n"
-					" L\n"
-					" E <DELAY_MS>\n"
-					" H\n");
-				break;
+            case CMD_INVALID:
+                fprintf(stderr, "Invalid Command. See H (help) for usage.\n");
+                break;
 
-			case CMD_EMPTY:
-				break;
+            case CMD_HELP:
+                printf(
+                    "Spaces between arguments are allowed, but not after "
+                    "command end.\n"
+                    "Available commands:\n"
+                    " D <VM_TYPE_ID> <INPUT_FOLDER> <EXECUTABLE_PATH> "
+                    "<RAM_NEEDED> <DISK_NEEDED> <VCPU_NEEDED_COUNT>\n"
+                    " R <RESERVATION_ID> [<VM_TYPE_ID> <COUNT> <SERVER_ID>]+\n"
+                    " A <RESERVATION_ID>\n"
+                    " L\n"
+                    " E <DELAY_MS>\n"
+                    " H\n");
+                break;
 
-			case EOC:
-				close(fd);
-				runningfile = 0;
-				break;
-			}
-		}
-	}
+            case CMD_EMPTY:
+                break;
 
-	for (int i = 0; i < n; i++)
-	{
-		free(file_name_list[i]);
-	}
-	free(file_name_list);
+            case EOC:
+                close(fd);
+                runningfile = 0;
+                break;
+            }
+        }
+    }
 
-	datacenter_destroy(&dc);
-	return 0;
+    for (int i = 0; i < n; i++) {
+        free(file_name_list[i]);
+    }
+    free(file_name_list);
+
+    datacenter_destroy(&dc);
+    return 0;
 }
