@@ -273,6 +273,13 @@ int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores) {
                 printf("Erro ao definir o limite");
                 return 1;
             }
+            struct rlimit rl;
+            rl.rlim_cur = vm->type->required.disk;
+            rl.rlim_max = vm->type->required.disk;
+            if (setrlimit(RLIMIT_FSIZE, &rl) == -1) {
+                printf("Erro ao definir o limite");
+                return 1;
+            }
             spawn_vm_child(vm, dc, personal_cores);
         }
     }
