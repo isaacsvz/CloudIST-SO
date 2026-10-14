@@ -12,7 +12,9 @@ int main(int argc, char **argv) {
     datacenter_init(&dc);
 
     if (argc != 6) {
-        fprintf(stderr, "Usage: %s <servers> <ram> <disk> <cpus> <input_dir>\n",
+        fprintf(stderr,
+                "Usage: %s <servers> <ram> <disk> <cpus> <input_dir> "
+                "<personal_cpu_cores>\n",
                 argv[0]);
         return 1;
     }
@@ -21,13 +23,13 @@ int main(int argc, char **argv) {
     size_t ram;
     size_t disk;
     double cpu;
+    double personal_cores;
 
     if (parse_size_t_arg(argv[1], &servers) != 0 ||
         parse_size_t_arg(argv[2], &ram) != 0 ||
         parse_size_t_arg(argv[3], &disk) != 0 ||
-        parse_double_arg(argv[4], &cpu) !=
-            0) //(NEW)verifica se foi introduzido o input dir
-    {
+        parse_double_arg(argv[4], &cpu) != 0 ||
+        parse_double_arg(argv[5], &personal_cores) != 0) {
         fprintf(stderr, "Invalid command line arguments.\n");
         return 1;
     }
@@ -37,7 +39,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    Resources resources = {.ram = ram, .disk = disk, .cpu = cpu};
+    Resources resources = {.ram = ram,
+                           .disk = disk,
+                           .cpu = cpu,
+                           .personal_cpu_cores = personal_cores};
 
     if (datacenter_configure(&dc, servers, &resources) != 0) {
         fprintf(stderr, "Failed to configure Data Center.\n");
@@ -104,8 +109,6 @@ int main(int argc, char **argv) {
 
                 printf("Reservation made successfully!\n");
 
-                // TODO - transferir_inputs aqui maybe
-
                 // criar pasta da reserva
                 char reserve_dir[MAX_PATH_SIZE];
                 if (new_dir_reserve((&reservation)->id, reserve_dir) < 0) {
@@ -116,9 +119,11 @@ int main(int argc, char **argv) {
                      vm_index++) {
                     VM *vm = reservation.vms[vm_index];
                     char vm_dir[MAX_PATH_SIZE];
+                    // criar pasta da VM
                     if (new_dir_vm(vm->id, reserve_dir, vm_dir) < 0) {
                         return -1;
                     }
+                    // transferir pasta inputs->pasta vm
                     if (transferir_inputs(vm->type->input_folder, vm_dir)) {
                         return -1;
                     };
@@ -137,7 +142,7 @@ int main(int argc, char **argv) {
                     continue;
                 }
 
-                if (datacenter_execute(&dc, id) != 0) {
+                if (datacenter_execute(&dc, id, personal_cores) != 0) {
                     fprintf(stderr, "Failed to execute reservation.\n");
                     continue;
                 }

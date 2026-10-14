@@ -5,14 +5,14 @@
 
 /**
  * Checks if a VMType with the given id exists.
- * 
+ *
  * @param dc Pointer to Data Center.
  * @param type_id Id of VM type being checked.
- * 
+ *
  * @return Pointer to VMType if it exists.
  * @return NULL if VMType does not exist.
  */
-VMType *VMType_exists(DataCenter *dc, const char* type_id);
+VMType *VMType_exists(DataCenter *dc, const char *type_id);
 
 /**
  * Simulates the placement of every VM requested in the reservation using a
@@ -20,8 +20,9 @@ VMType *VMType_exists(DataCenter *dc, const char* type_id);
  * is left unchanged regardless of the outcome.
  *
  * Validation fails if any requested server does not have enough available
- * resources to host all the requested VMs assigned to it or if the request 
- * does not have valid parameters (VM types that do not exist, invalid server ids).
+ * resources to host all the requested VMs assigned to it or if the request
+ * does not have valid parameters (VM types that do not exist, invalid server
+ * ids).
  *
  * @param dc Data Center where the reservation will be validated.
  * @param reservation Reservation to validate.
@@ -58,7 +59,8 @@ int reservation_commit(DataCenter *dc, Reservation *reservation);
  * @return Pointer to the Reservation if found and RES_STATE_PENDING.
  * @return NULL if not found or not in RES_STATE_PENDING (error is printed).
  */
-Reservation *find_pending_reservation(DataCenter *dc, const char *reservation_id);
+Reservation *find_pending_reservation(DataCenter *dc,
+                                      const char *reservation_id);
 
 /**
  * Frees every VM allocated to the reservation, returns their resources to the
@@ -78,7 +80,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation);
  *
  * @param vm Pointer to the VM being spawned.
  */
-void spawn_vm_child(VM *vm);
+void spawn_vm_child(VM *vm, DataCenter *dc, double personal_cores);
 
 /**
  * Forks one child per VM in the reservation, calling spawn_vm_child()
@@ -89,7 +91,7 @@ void spawn_vm_child(VM *vm);
  * @return 0 on success.
  * @return 1 if any fork() call fails.
  */
-int spawn_all_vms(Reservation *res);
+int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores);
 
 /**
  * Blocks until every VM's process has exited, updating each VM's state
