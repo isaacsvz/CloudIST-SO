@@ -266,17 +266,17 @@ int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores) {
 
         // TODO: Implement fork code. Set VM PID and update VM state to running.
         if ((vm->pid = fork()) == 0) {
-            struct rlimit rl;
-            rl.rlim_cur = vm->type->required.ram;
-            rl.rlim_max = vm->type->required.ram;
-            if (setrlimit(RLIMIT_AS, &rl) == -1) {
+            struct rlimit rl1;
+            rl1.rlim_cur = vm->type->required.ram;
+            rl1.rlim_max = vm->type->required.ram;
+            if (setrlimit(RLIMIT_AS, &rl1) == -1) {
                 printf("Erro ao definir o limite");
                 return 1;
             }
-            struct rlimit rl;
-            rl.rlim_cur = vm->type->required.disk;
-            rl.rlim_max = vm->type->required.disk;
-            if (setrlimit(RLIMIT_FSIZE, &rl) == -1) {
+            struct rlimit rl2;
+            rl2.rlim_cur = vm->type->required.disk;
+            rl2.rlim_max = vm->type->required.disk;
+            if (setrlimit(RLIMIT_FSIZE, &rl2) == -1) {
                 printf("Erro ao definir o limite");
                 return 1;
             }

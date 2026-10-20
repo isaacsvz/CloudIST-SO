@@ -65,11 +65,6 @@ int datacenter_define_VM(DataCenter *dc, VMType *type) {
         return 1;
     }
 
-    if (VMType_exists(dc, type->id) != NULL) {
-        fprintf(stderr, "VM type with id %s already exists.\n", type->id);
-        return 1;
-    }
-
     if (!file_exists(type->exec_path)) {
         fprintf(stderr, "Invalid executable path.\n");
         return 1;
@@ -80,13 +75,21 @@ int datacenter_define_VM(DataCenter *dc, VMType *type) {
         return 1;
     }
 
+    // fechar server wide trinco
+    if (VMType_exists(dc, type->id) != NULL) {
+        fprintf(stderr, "VM type with id %s already exists.\n", type->id);
+        // abrir
+        return 1;
+    }
+
     if (dc->num_vm_types >= MAX_VM_TYPES) {
         fprintf(stderr, "Maximum of VM types reached.\n");
+        // abrir
         return 1;
     }
 
     dc->vm_types[dc->num_vm_types++] = *type;
-
+    // abrir
     return 0;
 }
 
