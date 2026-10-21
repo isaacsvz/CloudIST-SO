@@ -59,12 +59,13 @@ int filter_dots(const struct dirent *entry) {
 }
 
 int copiar_ficheiros(const char *origem, int out_fd) {
-    int in_fd = open(origem, O_RDONLY);
-    if (in_fd < 0)
-        return -1; // retorna erro se nao conseguir abrir ficheiro original
 
     if (out_fd < 0)
         return -1;
+
+    int in_fd = open(origem, O_RDONLY);
+    if (in_fd < 0)
+        return -1; // retorna erro se nao conseguir abrir ficheiro original
 
     char buf[64];
     ssize_t bytes_lidos;
