@@ -99,8 +99,7 @@ int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores);
  *
  * @param res Pointer to the Reservation whose VMs should be waited on.
  */
-void wait_for_all_vms(Reservation *res);
-
+void *wait_for_all_vms(void *args);
 /**
  * Converts a VM state to a human-readable string. Used by datacenter_list().
  *
@@ -121,13 +120,22 @@ const char *vm_state_to_string(VMState state);
 const char *res_state_to_string(ReservationState state);
 
 /**
- * @brief Ordena um array por ordem crescente e remove os elementos duplicados.
+ * @brief Ordena um array de Server* por ordem crescente e remove os duplicados (mesmo id).
  * 
  * @param arr O array de inteiros a ser processado.
  * @param n O tamanho inicial do array.
  * @return int O novo tamanho do array após a remoção dos duplicados.
  */
-int sort_and_remove_duplicates(int arr[], int n);
+size_t sort_and_dedup_server_ptrs(Server *ptrs[], size_t n);
+
+/**
+ * @brief Periodicamente scaneia as vms da reserve para identificar quais terminam
+ * e instantaneamente devolver os recursos à máquina virtual
+ * 
+ * @param args 
+ * @return void* 
+ */
+void *scan_terminated_vms(void *args);
 
 
 #endif // DATACENTER_UTILS__H

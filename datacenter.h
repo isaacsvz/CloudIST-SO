@@ -30,6 +30,7 @@ typedef struct VM {
     Server *server;            // Server where the VM is placed.
     pid_t pid;                 // PID of executable file.
     VMState state;             // State of the VM.
+    int destroyed;
 } VM;
 
 typedef struct Server {

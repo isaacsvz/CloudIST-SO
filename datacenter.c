@@ -104,32 +104,24 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
         fprintf(stderr, "Data Center needs to be configured!\n");
         return 1;
     }
-    // listar servidores envolvidos
-    int envolved_servers[reservation->num_vms]; // worst case scenario todas as vms trabalham num server diferente
+    // lista de pointers servidores envolvidos
+    Server * envolved_servers[reservation->num_vms]; // worst case scenario todas as vms trabalham num server diferente
     for (int i = 0; i < (int)reservation->num_vms; i++) {
-        envolved_servers[i] = (int)reservation->vms[i]->server->id;
+        envolved_servers[i] = reservation->vms[i]->server;
     }
 
     //ordenar e tirar repetidos
-    int num_envolved_servers = sort_and_remove_duplicates(envolved_servers, (int)reservation->num_vms);
+    int num_envolved_servers = (int)sort_and_dedup_server_ptrs(envolved_servers, reservation->num_vms);
     
     // lock todos os servidores involvidos
     for(int i = 0; i < num_envolved_servers; i++){
-        for(int j = 0; j < (int)dc->num_servers; j++){
-            if(envolved_servers[i] == (int)dc->servers[j].id){
-                pthread_rwlock_wrlock(&dc->servers[j].rwlock);
-            }
-        }
+        pthread_rwlock_wrlock(&envolved_servers[i]->rwlock);
     }
     
     if (reservation_validate(dc, reservation) != 0) {
         //unlock servers
         for(int i = 0; i < num_envolved_servers; i++){
-            for(int j = 0; j < (int)dc->num_servers; j++){
-                if(envolved_servers[i] == (int)dc->servers[j].id){
-                    pthread_rwlock_wrlock(&dc->servers[j].rwlock);
-                }
-            }
+            pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
         }
         return 1;
     }
@@ -139,12 +131,20 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
         fprintf(stderr, "Max number of reservations reached\n");
         // unlock dc
         pthread_rwlock_unlock(&dc->rwlock);
+        //unlock servers
+        for(int i = 0; i < num_envolved_servers; i++){
+            pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
+        }
         return 1;
     }
     
     if (reservation_commit(dc, reservation) != 0){
         // unlock dc
         pthread_rwlock_unlock(&dc->rwlock);
+        //unlock servers
+        for(int i = 0; i < num_envolved_servers; i++){
+            pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
+        }
         return 1;
     }
         
@@ -154,11 +154,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
     pthread_rwlock_unlock(&dc->rwlock);
     // unlock servers
     for(int i = 0; i < num_envolved_servers; i++){
-        for(int j = 0; j < (int)dc->num_servers; j++){
-            if(envolved_servers[i] == (int)dc->servers[j].id){
-                pthread_rwlock_unlock(&dc->servers[j].rwlock);
-            }
-        }
+        pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
     }
 
     return 0;
@@ -180,12 +176,19 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id,
 
     res->state = RES_STATE_RUNNING;
 
+    //usar thread para correr um ciclo periodicamente só com esta função
+    
+    pthread_t tid;
+    pthread_create(&tid, NULL, scan_terminated_vms, res);
+
     wait_for_all_vms(res);
 
-    res->state = RES_STATE_FINISHED;
-
-    reservation_destroy(dc, res);
-
+    while(1){
+        if(res->state == RES_STATE_FINISHED){
+            reservation_destroy(dc, res);
+            break;
+        }
+    }
     return 0;
 }
 

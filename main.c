@@ -14,8 +14,9 @@ typedef struct {
 
 } run_file_args;
 
+
 void *run_conf_file(void *arg){
-    ;
+    
 }
 
 int main(int argc, char **argv) {

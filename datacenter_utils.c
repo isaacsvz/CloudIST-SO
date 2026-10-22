@@ -208,22 +208,18 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
     // Free every VM belonging to the reservation.
     //lock read write servers
 
-    // listar servidores envolvidos
-    int envolved_servers[reservation->num_vms]; // worst case scenario todas as vms trabalham num server diferente
+    // lista de pointers servidores envolvidos
+    Server * envolved_servers[reservation->num_vms]; // worst case scenario todas as vms trabalham num server diferente
     for (int i = 0; i < (int)reservation->num_vms; i++) {
-        envolved_servers[i] = (int)reservation->vms[i]->server->id;
+        envolved_servers[i] = reservation->vms[i]->server;
     }
 
     //ordenar e tirar repetidos
-    int num_envolved_servers = sort_and_remove_duplicates(envolved_servers, (int)reservation->num_vms);
+    int num_envolved_servers = (int)sort_and_dedup_server_ptrs(envolved_servers, reservation->num_vms);
     
     // lock todos os servidores involvidos
     for(int i = 0; i < num_envolved_servers; i++){
-        for(int j = 0; j < (int)dc->num_servers; j++){
-            if(envolved_servers[i] == (int)dc->servers[j].id){
-                pthread_rwlock_wrlock(&dc->servers[j].rwlock);
-            }
-        }
+        pthread_rwlock_wrlock(&envolved_servers[i]->rwlock);
     }
 
     for (size_t i = 0; i < reservation->num_vms; i++) {
@@ -250,11 +246,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
     }
     // unlock servers
     for(int i = 0; i < num_envolved_servers; i++){
-        for(int j = 0; j < (int)dc->num_servers; j++){
-            if(envolved_servers[i] == (int)dc->servers[j].id){
-                pthread_rwlock_unlock(&dc->servers[j].rwlock);
-            }
-        }
+        pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
     }
 
     reservation->num_vms = 0;
@@ -286,6 +278,7 @@ void spawn_vm_child(VM *vm, DataCenter *dc, double personal_cores) {
 
     // TODO: Limit RAM, DISK and use exec with cpulimit.
     vm->state = VM_STATE_RUNNING;
+    vm->destroyed= 0;
     double cpu_por_maquina = vm->server->total.cpu;
     double cpu_por_vm = vm->type->required.cpu;
     int num_maquinas = (int)dc->num_servers;
@@ -328,6 +321,7 @@ int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores) {
 }
 
 void wait_for_all_vms(Reservation *res) {
+    
     for (size_t i = 0; i < res->num_vms; i++) {
         int status;
         wait(&status);
@@ -364,26 +358,50 @@ const char *res_state_to_string(ReservationState state) {
     }
 }
 
-// Função de comparação necessária para o qsort
-int compare(const void *a, const void *b) {
-    return (*(int *)a - *(int *)b);
+// Comparador para um array de Server*
+int compare_server_ptrs_by_id(const void *a, const void *b) {
+    // a e b apontam para ELEMENTOS do array, e cada elemento é um Server*
+    const Server *sa = *(Server * const *)a;
+    const Server *sb = *(Server * const *)b;
+
+    if (sa->id < sb->id) return -1;
+    if (sa->id > sb->id) return 1;
+    return 0;
 }
 
-// Ordena o array e remove os duplicados, devolvendo o novo tamanho
-int sort_and_remove_duplicates(int arr[], int n) {
+size_t sort_and_dedup_server_ptrs(Server *ptrs[], size_t n) {
     if (n <= 1) return n;
 
-    // 1. Ordenar o array O(n log n)
-    qsort(arr, (size_t)n, sizeof(int), compare);
+    qsort(ptrs, n, sizeof(Server *), compare_server_ptrs_by_id);
 
-    // 2. Remover duplicados em O(n)
-    int j = 0;
-    for (int i = 0; i < n - 1; i++) {
-        if (arr[i] != arr[i + 1]) {
-            arr[j++] = arr[i];
+    size_t j = 1;
+    for (size_t i = 1; i < n; i++) {
+        if (ptrs[i]->id != ptrs[j - 1]->id) {
+            ptrs[j++] = ptrs[i];
         }
     }
-    arr[j++] = arr[n - 1]; // Guarda o último elemento
+    return j;
+}
 
-    return j; // Novo tamanho do array sem repetidos
+void *scan_terminated_vms(void *args){
+    Reservation *res = args;
+    int counter = 0;
+    while(counter < res->num_vms){
+        for(int i = 0; i < res->num_vms; i++){
+            if(res->vms[i]->state == VM_STATE_TERMINATED && res->vms[i]->destroyed == 0){
+                Server *server = res->vms[i]->server;
+                pthread_rwlock_wrlock(&server->rwlock);
+                Resources finished_resources = res->vms[i]->type->required; 
+                resources_add(&server->available, finished_resources);
+                pthread_rwlock_unlock(&server->rwlock);
+                counter++;
+                res->vms[i]->destroyed = 1;
+                if(counter == res->num_vms) break;
+            }
+        }
+    }
+    res->state = RES_STATE_FINISHED;
+    return NULL;
+
+
 }
