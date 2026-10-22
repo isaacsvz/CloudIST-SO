@@ -69,7 +69,7 @@ int copiar_ficheiros(const char *origem, int out_fd) {
         return -1; // retorna erro se nao conseguir abrir ficheiro original
     }
 
-    char buf[64];
+    char buf[4096];
     ssize_t bytes_lidos;
     ssize_t bytes_escritos;
 

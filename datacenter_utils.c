@@ -386,8 +386,8 @@ size_t sort_and_dedup_server_ptrs(Server *ptrs[], size_t n) {
 void *scan_terminated_vms(void *args){
     Reservation *res = args;
     int counter = 0;
-    while(counter < res->num_vms){
-        for(int i = 0; i < res->num_vms; i++){
+    while(counter < (int)res->num_vms){
+        for(int i = 0; i < (int)res->num_vms; i++){
             if(res->vms[i]->state == VM_STATE_TERMINATED && res->vms[i]->destroyed == 0){
                 Server *server = res->vms[i]->server;
                 pthread_rwlock_wrlock(&server->rwlock);
@@ -396,7 +396,7 @@ void *scan_terminated_vms(void *args){
                 pthread_rwlock_unlock(&server->rwlock);
                 counter++;
                 res->vms[i]->destroyed = 1;
-                if(counter == res->num_vms) break;
+                if(counter == (int)res->num_vms) break;
             }
         }
     }
