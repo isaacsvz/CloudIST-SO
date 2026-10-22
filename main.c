@@ -7,6 +7,17 @@
 #include <string.h>
 #include <unistd.h>
 
+typedef struct {
+    DataCenter dc;
+    int personal_cores;
+    int fd;
+
+} run_file_args;
+
+void *run_conf_file(void *arg){
+    ;
+}
+
 int main(int argc, char **argv) {
     DataCenter dc;
     datacenter_init(&dc);
@@ -58,14 +69,18 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    
     for (int i = 0; i < n; i++) {
-
+        
         // Concatenação da dir com o ficheiro para criar o file_path para o open
         // 256 + 1 -> por causa da barra
         char file_path[257];
         snprintf(file_path, sizeof(file_path), "%s/%s", argv[5],
-                 file_name_list[i]->d_name);
+        file_name_list[i]->d_name);
         int fd = my_open(file_path);
+        
+        
+        //transformar daqui para baixo numa função para poder chamar pthread com essa função
         int runningfile = 1;
         while (runningfile) {
             switch (get_next_command(fd)) {

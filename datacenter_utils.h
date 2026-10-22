@@ -120,4 +120,14 @@ const char *vm_state_to_string(VMState state);
  */
 const char *res_state_to_string(ReservationState state);
 
+/**
+ * @brief Ordena um array por ordem crescente e remove os elementos duplicados.
+ * 
+ * @param arr O array de inteiros a ser processado.
+ * @param n O tamanho inicial do array.
+ * @return int O novo tamanho do array após a remoção dos duplicados.
+ */
+int sort_and_remove_duplicates(int arr[], int n);
+
+
 #endif // DATACENTER_UTILS__H

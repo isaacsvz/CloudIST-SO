@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
+
 
 void datacenter_init(DataCenter *dc) {
     dc->servers = NULL;
@@ -51,10 +53,14 @@ int datacenter_configure(DataCenter *dc, size_t num_servers,
         dc->servers[i].total = *resources;
         dc->servers[i].available = *resources;
         dc->servers[i].num_hosted_vms = 0;
+        //init lock
+        pthread_rwlock_init(&dc->servers[i].rwlock, NULL);
+
     }
 
     dc->num_servers = num_servers;
     dc->configured = 1;
+    pthread_rwlock_init(&dc->rwlock, NULL);
 
     return 0;
 }
@@ -75,7 +81,7 @@ int datacenter_define_VM(DataCenter *dc, VMType *type) {
         return 1;
     }
 
-    // fechar server wide trinco
+    // fechar dc wide trinco
     if (VMType_exists(dc, type->id) != NULL) {
         fprintf(stderr, "VM type with id %s already exists.\n", type->id);
         // abrir
@@ -98,21 +104,62 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
         fprintf(stderr, "Data Center needs to be configured!\n");
         return 1;
     }
+    // listar servidores envolvidos
+    int envolved_servers[reservation->num_vms]; // worst case scenario todas as vms trabalham num server diferente
+    for (int i = 0; i < (int)reservation->num_vms; i++) {
+        envolved_servers[i] = (int)reservation->vms[i]->server->id;
+    }
 
+    //ordenar e tirar repetidos
+    int num_envolved_servers = sort_and_remove_duplicates(envolved_servers, (int)reservation->num_vms);
+    
+    // lock todos os servidores involvidos
+    for(int i = 0; i < num_envolved_servers; i++){
+        for(int j = 0; j < (int)dc->num_servers; j++){
+            if(envolved_servers[i] == (int)dc->servers[j].id){
+                pthread_rwlock_wrlock(&dc->servers[j].rwlock);
+            }
+        }
+    }
+    
     if (reservation_validate(dc, reservation) != 0) {
+        //unlock servers
+        for(int i = 0; i < num_envolved_servers; i++){
+            for(int j = 0; j < (int)dc->num_servers; j++){
+                if(envolved_servers[i] == (int)dc->servers[j].id){
+                    pthread_rwlock_wrlock(&dc->servers[j].rwlock);
+                }
+            }
+        }
         return 1;
     }
 
+    pthread_rwlock_wrlock(&dc->rwlock);
     if (dc->num_reservations >= MAX_RESERVATIONS) {
         fprintf(stderr, "Max number of reservations reached\n");
+        // unlock dc
+        pthread_rwlock_unlock(&dc->rwlock);
         return 1;
     }
-
-    if (reservation_commit(dc, reservation) != 0)
+    
+    if (reservation_commit(dc, reservation) != 0){
+        // unlock dc
+        pthread_rwlock_unlock(&dc->rwlock);
         return 1;
-
+    }
+        
     dc->reservations[dc->num_reservations] = *reservation;
     dc->num_reservations++;
+    // unlock dc
+    pthread_rwlock_unlock(&dc->rwlock);
+    // unlock servers
+    for(int i = 0; i < num_envolved_servers; i++){
+        for(int j = 0; j < (int)dc->num_servers; j++){
+            if(envolved_servers[i] == (int)dc->servers[j].id){
+                pthread_rwlock_unlock(&dc->servers[j].rwlock);
+            }
+        }
+    }
 
     return 0;
 }
@@ -155,10 +202,13 @@ int datacenter_list(DataCenter *dc) {
            "-----------------------\n");
 
     for (size_t i = 0; i < dc->num_servers; i++) {
+        
         Server server = dc->servers[i];
-
+        //lock para leitura
+        pthread_rwlock_rdlock(&server.rwlock);
         Resources used = server.total;
         resources_sub(&used, server.available);
+        pthread_rwlock_unlock(&server.rwlock);
 
         printf(" Server #%zu\n", server.id);
         printf("   ├─ Resources Total     : %6.2f vCPUs | %3zu GB RAM | %3zu "
@@ -210,7 +260,8 @@ int datacenter_list(DataCenter *dc) {
         }
         printf("\n");
     }
-
+    // lock de leitura do dc
+    pthread_rwlock_rdlock(&dc->rwlock);
     printf("[ RESERVATIONS ] (%zu total)\n", dc->num_reservations);
     printf("-------------------------------------------------------------------"
            "-----------------------\n");
@@ -242,7 +293,7 @@ int datacenter_list(DataCenter *dc) {
             printf("\n");
         }
     }
-
+    pthread_rwlock_unlock(&dc->rwlock);
     printf("================================================================---"
            "-----------------------\n\n");
     return 0;

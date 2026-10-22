@@ -36,9 +36,11 @@ typedef struct Server {
     size_t id;           // Server ID (1, 2, 3, ...)
     Resources total;     // Resources that Server has.
     Resources available; // Resources still available.
-
+    
     VM *hosted_vms[MAX_HOSTED_VMS];
     size_t num_hosted_vms;
+    //read write lock
+    pthread_rwlock_t rwlock;
 } Server;
 
 typedef enum {
@@ -77,6 +79,8 @@ typedef struct DataCenter {
     size_t num_reservations;
 
     int configured; // Wheter the datacenter is configured or not.
+    //read write lock 
+    pthread_rwlock_t rwlock;
 } DataCenter;
 
 /**

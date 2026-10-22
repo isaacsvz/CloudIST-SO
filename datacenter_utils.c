@@ -6,6 +6,7 @@
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <pthread.h>
 
 VMType *VMType_exists(DataCenter *dc, const char *type_id) {
     for (size_t i = 0; i < dc->num_vm_types; i++) {
@@ -26,12 +27,16 @@ VMType *VMType_exists(DataCenter *dc, const char *type_id) {
  * @return 0 if the reservation does not exist.
  */
 static int reservation_exists(DataCenter *dc, const char *reservation_id) {
+    //lock leitura do dc
+    pthread_rwlock_rdlock(&dc->rwlock);
     for (size_t i = 0; i < dc->num_reservations; i++) {
         if (strncmp(reservation_id, dc->reservations[i].id, MAX_STRING_SIZE) ==
-            0) {
+        0) {
+            pthread_rwlock_unlock(&dc->rwlock);
             return 1;
         }
     }
+    pthread_rwlock_unlock(&dc->rwlock);
     return 0;
 }
 
@@ -174,13 +179,16 @@ int reservation_commit(DataCenter *dc, Reservation *reservation) {
 Reservation *find_pending_reservation(DataCenter *dc,
                                       const char *reservation_id) {
     Reservation *res = NULL;
-
+    
+    //lock leitura dc
+    pthread_rwlock_rdlock(&dc->rwlock);
     for (size_t i = 0; i < dc->num_reservations; i++) {
         if (strcmp(dc->reservations[i].id, reservation_id) == 0) {
             res = &dc->reservations[i];
             break;
         }
     }
+    pthread_rwlock_unlock(&dc->rwlock);
 
     if (!res) {
         fprintf(stderr, "Reservation ID %s not found.\n", reservation_id);
@@ -198,6 +206,26 @@ Reservation *find_pending_reservation(DataCenter *dc,
 
 void reservation_destroy(DataCenter *dc, Reservation *reservation) {
     // Free every VM belonging to the reservation.
+    //lock read write servers
+
+    // listar servidores envolvidos
+    int envolved_servers[reservation->num_vms]; // worst case scenario todas as vms trabalham num server diferente
+    for (int i = 0; i < (int)reservation->num_vms; i++) {
+        envolved_servers[i] = (int)reservation->vms[i]->server->id;
+    }
+
+    //ordenar e tirar repetidos
+    int num_envolved_servers = sort_and_remove_duplicates(envolved_servers, (int)reservation->num_vms);
+    
+    // lock todos os servidores involvidos
+    for(int i = 0; i < num_envolved_servers; i++){
+        for(int j = 0; j < (int)dc->num_servers; j++){
+            if(envolved_servers[i] == (int)dc->servers[j].id){
+                pthread_rwlock_wrlock(&dc->servers[j].rwlock);
+            }
+        }
+    }
+
     for (size_t i = 0; i < reservation->num_vms; i++) {
         VM *vm = reservation->vms[i];
         Server *server = vm->server;
@@ -220,25 +248,37 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
         free(vm);
         reservation->vms[i] = NULL;
     }
-
-    reservation->num_vms = 0;
-
-    // Find the reservation inside the Data Center reservation list.
-    size_t idx;
-    for (idx = 0; idx < dc->num_reservations; idx++) {
-        if (&dc->reservations[idx] == reservation)
-            break;
+    // unlock servers
+    for(int i = 0; i < num_envolved_servers; i++){
+        for(int j = 0; j < (int)dc->num_servers; j++){
+            if(envolved_servers[i] == (int)dc->servers[j].id){
+                pthread_rwlock_unlock(&dc->servers[j].rwlock);
+            }
+        }
     }
 
+    reservation->num_vms = 0;
+    
+    // Find the reservation inside the Data Center reservation list.
+    size_t idx;
+    //lock dc escrita e leitura
+    pthread_rwlock_wrlock(&dc->rwlock);
+    for (idx = 0; idx < dc->num_reservations; idx++) {
+        if (&dc->reservations[idx] == reservation)
+        break;
+    }
+    
     // Reservation not found (should never happen).
     if (idx == dc->num_reservations)
-        return;
-
+    return;
+    
     // Remove the reservation by shifting the remaining ones.
     memmove(&dc->reservations[idx], &dc->reservations[idx + 1],
-            (dc->num_reservations - idx - 1) * sizeof(Reservation));
-
-    dc->num_reservations--;
+        (dc->num_reservations - idx - 1) * sizeof(Reservation));
+        
+        dc->num_reservations--;
+        
+    pthread_rwlock_unlock(&dc->rwlock);
 }
 
 void spawn_vm_child(VM *vm, DataCenter *dc, double personal_cores) {
@@ -322,4 +362,28 @@ const char *res_state_to_string(ReservationState state) {
     default:
         return "UNKNOWN";
     }
+}
+
+// Função de comparação necessária para o qsort
+int compare(const void *a, const void *b) {
+    return (*(int *)a - *(int *)b);
+}
+
+// Ordena o array e remove os duplicados, devolvendo o novo tamanho
+int sort_and_remove_duplicates(int arr[], int n) {
+    if (n <= 1) return n;
+
+    // 1. Ordenar o array O(n log n)
+    qsort(arr, (size_t)n, sizeof(int), compare);
+
+    // 2. Remover duplicados em O(n)
+    int j = 0;
+    for (int i = 0; i < n - 1; i++) {
+        if (arr[i] != arr[i + 1]) {
+            arr[j++] = arr[i];
+        }
+    }
+    arr[j++] = arr[n - 1]; // Guarda o último elemento
+
+    return j; // Novo tamanho do array sem repetidos
 }

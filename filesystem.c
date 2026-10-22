@@ -64,8 +64,10 @@ int copiar_ficheiros(const char *origem, int out_fd) {
         return -1;
 
     int in_fd = open(origem, O_RDONLY);
-    if (in_fd < 0)
+    if (in_fd < 0) {
+        close(out_fd);
         return -1; // retorna erro se nao conseguir abrir ficheiro original
+    }
 
     char buf[64];
     ssize_t bytes_lidos;
@@ -84,12 +86,19 @@ int copiar_ficheiros(const char *origem, int out_fd) {
             return -1;
         }
 
-        bytes_escritos = write(out_fd, buf, (size_t)bytes_lidos);
+        char *done = buf;
+        ssize_t restante = bytes_lidos;
 
-        if (bytes_escritos != bytes_lidos) {
-            close(in_fd);
-            close(out_fd);
-            return -1;
+        while (restante > 0) {
+            bytes_escritos = write(out_fd, done, (size_t)restante);
+            if (bytes_escritos < 0) {
+                close(in_fd);
+                close(out_fd);
+                return -1;
+            }
+
+            done += bytes_escritos;
+            restante -= bytes_escritos;
         }
     }
 
