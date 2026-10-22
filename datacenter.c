@@ -175,20 +175,13 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id,
         return 1;
 
     res->state = RES_STATE_RUNNING;
-
-    //usar thread para correr um ciclo periodicamente só com esta função
     
-    pthread_t tid;
-    pthread_create(&tid, NULL, scan_terminated_vms, res);
-
+    //garantir que todas acabam antes do destroy
     wait_for_all_vms(res);
 
-    while(1){
-        if(res->state == RES_STATE_FINISHED){
-            reservation_destroy(dc, res);
-            break;
-        }
-    }
+    reservation_destroy(dc, res);
+    res->state = RES_STATE_FINISHED;
+
     return 0;
 }
 

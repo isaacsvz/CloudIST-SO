@@ -128,14 +128,6 @@ const char *res_state_to_string(ReservationState state);
  */
 size_t sort_and_dedup_server_ptrs(Server *ptrs[], size_t n);
 
-/**
- * @brief Periodicamente scaneia as vms da reserve para identificar quais terminam
- * e instantaneamente devolver os recursos à máquina virtual
- * 
- * @param args 
- * @return void* 
- */
-void *scan_terminated_vms(void *args);
-
+void *wait_vm(void *args);
 
 #endif // DATACENTER_UTILS__H

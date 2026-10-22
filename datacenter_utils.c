@@ -206,28 +206,10 @@ Reservation *find_pending_reservation(DataCenter *dc,
 
 void reservation_destroy(DataCenter *dc, Reservation *reservation) {
     // Free every VM belonging to the reservation.
-    //lock read write servers
-
-    // lista de pointers servidores envolvidos
-    Server * envolved_servers[reservation->num_vms]; // worst case scenario todas as vms trabalham num server diferente
-    for (int i = 0; i < (int)reservation->num_vms; i++) {
-        envolved_servers[i] = reservation->vms[i]->server;
-    }
-
-    //ordenar e tirar repetidos
-    int num_envolved_servers = (int)sort_and_dedup_server_ptrs(envolved_servers, reservation->num_vms);
-    
-    // lock todos os servidores involvidos
-    for(int i = 0; i < num_envolved_servers; i++){
-        pthread_rwlock_wrlock(&envolved_servers[i]->rwlock);
-    }
 
     for (size_t i = 0; i < reservation->num_vms; i++) {
         VM *vm = reservation->vms[i];
         Server *server = vm->server;
-
-        // Return the VM resources back to the hosting server.
-        resources_add(&server->available, vm->type->required);
 
         // Remove the VM from the server's hosted VM list.
         for (size_t j = 0; j < server->num_hosted_vms; j++) {
@@ -243,10 +225,6 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
 
         free(vm);
         reservation->vms[i] = NULL;
-    }
-    // unlock servers
-    for(int i = 0; i < num_envolved_servers; i++){
-        pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
     }
 
     reservation->num_vms = 0;
@@ -321,14 +299,13 @@ int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores) {
 }
 
 void wait_for_all_vms(Reservation *res) {
-    
+    pthread_t tid[res->num_vms];
     for (size_t i = 0; i < res->num_vms; i++) {
-        int status;
-        wait(&status);
-        if (status < 0) {
-            printf("VM execution finished with -1");
-        }
-        res->vms[i]->state = VM_STATE_TERMINATED;
+        VM *vm = res->vms[i];
+        pthread_create(&tid[i], NULL, wait_vm, vm);
+    }
+    for(size_t i = 0; i < res->num_vms; i++){
+        pthread_join(tid[i], NULL);
     }
 }
 
@@ -383,25 +360,16 @@ size_t sort_and_dedup_server_ptrs(Server *ptrs[], size_t n) {
     return j;
 }
 
-void *scan_terminated_vms(void *args){
-    Reservation *res = args;
-    int counter = 0;
-    while(counter < (int)res->num_vms){
-        for(int i = 0; i < (int)res->num_vms; i++){
-            if(res->vms[i]->state == VM_STATE_TERMINATED && res->vms[i]->destroyed == 0){
-                Server *server = res->vms[i]->server;
-                pthread_rwlock_wrlock(&server->rwlock);
-                Resources finished_resources = res->vms[i]->type->required; 
-                resources_add(&server->available, finished_resources);
-                pthread_rwlock_unlock(&server->rwlock);
-                counter++;
-                res->vms[i]->destroyed = 1;
-                if(counter == (int)res->num_vms) break;
-            }
-        }
-    }
-    res->state = RES_STATE_FINISHED;
+void *wait_vm(void *args){
+    VM *vm = (VM *) args;
+    int status;
+    waitpid(vm->pid, &status, 0);
+    Server *server = vm->server;
+    pthread_rwlock_wrlock(&server->rwlock);
+    Resources finished_resources = vm->type->required; 
+    resources_add(&server->available, finished_resources);
+    pthread_rwlock_unlock(&server->rwlock);
+    vm->state = VM_STATE_TERMINATED;
     return NULL;
-
 
 }
