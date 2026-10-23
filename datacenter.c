@@ -82,19 +82,23 @@ int datacenter_define_VM(DataCenter *dc, VMType *type) {
     }
 
     // fechar dc wide trinco
+    pthread_rwlock_wrlock(&dc->rwlock);
     if (VMType_exists(dc, type->id) != NULL) {
         fprintf(stderr, "VM type with id %s already exists.\n", type->id);
         // abrir
+        pthread_rwlock_unlock(&dc->rwlock);
         return 1;
     }
-
+    
     if (dc->num_vm_types >= MAX_VM_TYPES) {
         fprintf(stderr, "Maximum of VM types reached.\n");
         // abrir
+        pthread_rwlock_unlock(&dc->rwlock);
         return 1;
     }
-
+    
     dc->vm_types[dc->num_vm_types++] = *type;
+    pthread_rwlock_unlock(&dc->rwlock);
     // abrir
     return 0;
 }
@@ -105,22 +109,28 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
         return 1;
     }
     // lista de pointers servidores envolvidos
-    Server * envolved_servers[reservation->num_vms]; // worst case scenario todas as vms trabalham num server diferente
-    for (int i = 0; i < (int)reservation->num_vms; i++) {
-        envolved_servers[i] = reservation->vms[i]->server;
+    Server * envolved_servers[MAX_RESERVATIONS_ITEMS]; // worst case scenario todas as vms trabalham num server diferente
+    size_t num_envolved_servers = 0;
+    for (size_t i = 0; i < reservation->items_count; i++) {
+        size_t server_id = reservation->items[i].server_id;
+        if(server_id == 0 || server_id > dc->num_servers){
+            printf("Invalid server in reservation\n");
+            return 1;
+        }
+        envolved_servers[num_envolved_servers++] = &dc->servers[server_id- 1];
     }
 
     //ordenar e tirar repetidos
-    int num_envolved_servers = (int)sort_and_dedup_server_ptrs(envolved_servers, reservation->num_vms);
+    num_envolved_servers = sort_and_dedup_server_ptrs(envolved_servers, reservation->num_vms);
     
     // lock todos os servidores involvidos
-    for(int i = 0; i < num_envolved_servers; i++){
+    for(size_t i = 0; i < num_envolved_servers; i++){
         pthread_rwlock_wrlock(&envolved_servers[i]->rwlock);
     }
     
     if (reservation_validate(dc, reservation) != 0) {
         //unlock servers
-        for(int i = 0; i < num_envolved_servers; i++){
+        for(int i = 0; i < (int)num_envolved_servers; i++){
             pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
         }
         return 1;
@@ -132,7 +142,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
         // unlock dc
         pthread_rwlock_unlock(&dc->rwlock);
         //unlock servers
-        for(int i = 0; i < num_envolved_servers; i++){
+        for(int i = 0; i < (int)num_envolved_servers; i++){
             pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
         }
         return 1;
@@ -142,7 +152,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
         // unlock dc
         pthread_rwlock_unlock(&dc->rwlock);
         //unlock servers
-        for(int i = 0; i < num_envolved_servers; i++){
+        for(int i = 0; i < (int)num_envolved_servers; i++){
             pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
         }
         return 1;
@@ -153,7 +163,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
     // unlock dc
     pthread_rwlock_unlock(&dc->rwlock);
     // unlock servers
-    for(int i = 0; i < num_envolved_servers; i++){
+    for(int i = 0; i < (int)num_envolved_servers; i++){
         pthread_rwlock_unlock(&envolved_servers[i]->rwlock);
     }
 
@@ -199,33 +209,32 @@ int datacenter_list(DataCenter *dc) {
 
     for (size_t i = 0; i < dc->num_servers; i++) {
         
-        Server server = dc->servers[i];
+        Server *server = &dc->servers[i];
         //lock para leitura
-        pthread_rwlock_rdlock(&server.rwlock);
-        Resources used = server.total;
-        resources_sub(&used, server.available);
-        pthread_rwlock_unlock(&server.rwlock);
+        pthread_rwlock_rdlock(&server->rwlock);
+        Resources used = server->total;
+        resources_sub(&used, server->available);
 
-        printf(" Server #%zu\n", server.id);
+        printf(" Server #%zu\n", server->id);
         printf("   ├─ Resources Total     : %6.2f vCPUs | %3zu GB RAM | %3zu "
                "GB Disk\n",
-               server.total.cpu, server.total.ram, server.total.disk);
+               server->total.cpu, server->total.ram, server->total.disk);
         printf("   ├─ Resources Used      : %6.2f vCPUs | %3zu GB RAM | %3zu "
                "GB Disk\n",
                used.cpu, used.ram, used.disk);
         printf("   ├─ Resources Available : %6.2f vCPUs | %3zu GB RAM | %3zu "
                "GB Disk\n",
-               server.available.cpu, server.available.ram,
-               server.available.disk);
-        printf("   └─ Hosted VMs (%zu):\n", server.num_hosted_vms);
+               server->available.cpu, server->available.ram,
+               server->available.disk);
+        printf("   └─ Hosted VMs (%zu):\n", server->num_hosted_vms);
 
-        if (server.num_hosted_vms == 0) {
+        if (server->num_hosted_vms == 0) {
             printf("        (None)\n");
         } else {
-            for (size_t j = 0; j < server.num_hosted_vms; j++) {
-                VM *vm = server.hosted_vms[j];
+            for (size_t j = 0; j < server->num_hosted_vms; j++) {
+                VM *vm = server->hosted_vms[j];
                 const char *prefix =
-                    (j == server.num_hosted_vms - 1) ? "└──" : "├──";
+                    (j == server->num_hosted_vms - 1) ? "└──" : "├──";
 
                 printf("        %s VM ID : %-16s | Type: %-10s | State: %-10s",
                        prefix, vm->id, vm->type ? vm->type->id : "Unknown",
@@ -237,9 +246,11 @@ int datacenter_list(DataCenter *dc) {
                 printf("\n");
             }
         }
+        pthread_rwlock_unlock(&server->rwlock);
         printf("\n");
     }
-
+    // lock de leitura do dc
+    pthread_rwlock_rdlock(&dc->rwlock);
     printf("[ DEFINED VM TYPES ] (%zu registered)\n", dc->num_vm_types);
     printf("-------------------------------------------------------------------"
            "-----------------------\n");
@@ -256,8 +267,6 @@ int datacenter_list(DataCenter *dc) {
         }
         printf("\n");
     }
-    // lock de leitura do dc
-    pthread_rwlock_rdlock(&dc->rwlock);
     printf("[ RESERVATIONS ] (%zu total)\n", dc->num_reservations);
     printf("-------------------------------------------------------------------"
            "-----------------------\n");

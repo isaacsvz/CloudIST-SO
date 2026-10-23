@@ -7,6 +7,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+
 
 
 typedef struct {
@@ -14,6 +17,42 @@ typedef struct {
     double personal_cores;
     int fd;
 } run_file_args;
+
+
+void *waitGlobal(void *args){
+    DataCenter *dc = (DataCenter*) args;
+    int status;
+    while(1){
+        pid_t pid = wait(&status);
+        if(pid < 0){
+            datacenter_wait(10);
+            continue;
+        }
+
+        VM *vm = NULL;
+        pthread_rwlock_rdlock(&dc->rwlock);
+        for(int i = 0; i < (int)dc->num_reservations && vm == NULL; i++){
+            for(int j = 0; j < (int)dc->reservations[i].num_vms;j++){
+                if(dc->reservations[i].vms[j]->pid == pid){
+                    vm = dc->reservations[i].vms[j];
+                    break;
+                }
+            }
+        }
+        pthread_rwlock_unlock(&dc->rwlock);
+
+        if(vm == NULL) continue;
+        
+        pthread_rwlock_wrlock(&vm->server->rwlock);
+        Resources finished_resources = vm->type->required; 
+        resources_add(&vm->server->available, finished_resources);
+        vm->state = VM_STATE_TERMINATED;
+        pthread_rwlock_unlock(&vm->server->rwlock);
+    }
+    return NULL;
+    
+    
+}
 
 
 void *run_conf_file(void *args){
@@ -161,10 +200,10 @@ int main(int argc, char **argv) {
     DataCenter dc;
     datacenter_init(&dc);
 
-    if (argc != 6) {
+    if (argc != 8) {
         fprintf(stderr,
                 "Usage: %s <servers> <ram> <disk> <cpus> <input_dir> "
-                "<personal_cpu_cores>\n",
+                "<personal_cpu_cores> <max_threads>\n",
                 argv[0]);
         return 1;
     }
@@ -174,12 +213,14 @@ int main(int argc, char **argv) {
     size_t disk;
     double cpu;
     double personal_cores;
+    size_t max_threads;
 
     if (parse_size_t_arg(argv[1], &servers) != 0 ||
         parse_size_t_arg(argv[2], &ram) != 0 ||
         parse_size_t_arg(argv[3], &disk) != 0 ||
         parse_double_arg(argv[4], &cpu) != 0 ||
-        parse_double_arg(argv[5], &personal_cores) != 0) {
+        parse_double_arg(argv[6], &personal_cores) != 0 ||
+        parse_size_t_arg(argv[7], &max_threads) != 0) {
         fprintf(stderr, "Invalid command line arguments.\n");
         return 1;
     }
@@ -202,15 +243,19 @@ int main(int argc, char **argv) {
     // Cria array de ponteiros para structs dirent
     struct dirent **file_name_list;
     int n = scandir(argv[5], &file_name_list, filter_dots, alphasort);
-
+    if(n > (int)max_threads){
+        printf("Too many files for max_threads: %d", (int)max_threads);
+    }
     if (n < 0) {
         perror("Failed to scan input directory");
         return EXIT_FAILURE;
     }
 
     
-    
+    pthread_t tid_global;
+    pthread_create(&tid_global, NULL, waitGlobal, &dc);
     pthread_t tid[n];
+    run_file_args args[n];
     for (int i = 0; i < n; i++) {
         
         // Concatenação da dir com o ficheiro para criar o file_path para o open
@@ -220,10 +265,9 @@ int main(int argc, char **argv) {
         file_name_list[i]->d_name);
         int fd = my_open(file_path);
         
-        
         //transformar daqui para baixo numa função para poder chamar pthread com essa função
-        run_file_args args = {.dc = &dc, .fd = fd, .personal_cores = personal_cores};
-        pthread_create(&tid[i], NULL, run_conf_file, &args);
+        args[i] = (run_file_args){.dc = &dc, .fd = fd, .personal_cores = personal_cores};
+        pthread_create(&tid[i], NULL, run_conf_file, &args[i]);
     }
     for(int i = 0; i < n; i++){
         if(pthread_join(tid[i], NULL) != 0){

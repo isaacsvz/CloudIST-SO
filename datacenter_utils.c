@@ -205,58 +205,56 @@ Reservation *find_pending_reservation(DataCenter *dc,
 }
 
 void reservation_destroy(DataCenter *dc, Reservation *reservation) {
-    // Free every VM belonging to the reservation.
-
-    for (size_t i = 0; i < reservation->num_vms; i++) {
-        VM *vm = reservation->vms[i];
-        Server *server = vm->server;
-
-        // Remove the VM from the server's hosted VM list.
-        for (size_t j = 0; j < server->num_hosted_vms; j++) {
-            if (server->hosted_vms[j] == vm) {
-                // Shift the remaining VMs one position to the left.
-                memmove(&server->hosted_vms[j], &server->hosted_vms[j + 1],
-                        (server->num_hosted_vms - j - 1) * sizeof(VM *));
-
-                server->num_hosted_vms--;
-                break;
-            }
-        }
-
-        free(vm);
-        reservation->vms[i] = NULL;
+    
+    VM *vms[MAX_RESERVATION_VMS];
+    size_t num_vms;
+    //lock dc escrita e leitura
+    pthread_rwlock_wrlock(&dc->rwlock);
+    num_vms = reservation->num_vms;
+    for(size_t i = 0; i < num_vms; i++){
+        vms[i] = reservation->vms[i];
     }
-
-    reservation->num_vms = 0;
     
     // Find the reservation inside the Data Center reservation list.
     size_t idx;
-    //lock dc escrita e leitura
-    pthread_rwlock_wrlock(&dc->rwlock);
     for (idx = 0; idx < dc->num_reservations; idx++) {
         if (&dc->reservations[idx] == reservation)
         break;
     }
     
-    // Reservation not found (should never happen).
-    if (idx == dc->num_reservations)
-    return;
-    
-    // Remove the reservation by shifting the remaining ones.
-    memmove(&dc->reservations[idx], &dc->reservations[idx + 1],
-        (dc->num_reservations - idx - 1) * sizeof(Reservation));
-        
+    if(idx < dc->num_reservations){
+        // Remove the reservation by shifting the remaining ones.
+        memmove(&dc->reservations[idx], &dc->reservations[idx + 1],
+            (dc->num_reservations - idx - 1) * sizeof(Reservation));
         dc->num_reservations--;
+    }
         
     pthread_rwlock_unlock(&dc->rwlock);
+
+    // Free every VM belonging to the reservation.
+    for (size_t i = 0; i < num_vms; i++) {
+        VM *vm = vms[i];
+        Server *server = vm->server;
+        pthread_rwlock_wrlock(&vm->server->rwlock);
+        // Remove the VM from the server's hosted VM list.
+        for (size_t j = 0; j < server->num_hosted_vms; j++) {
+            if (server->hosted_vms[j] == vm) {
+                // Shift the remaining VMs one position to the left.
+                memmove(&server->hosted_vms[j], &server->hosted_vms[j + 1],
+                    (server->num_hosted_vms - j - 1) * sizeof(VM *));
+                    server->num_hosted_vms--;
+                    break;
+                }
+        }
+        pthread_rwlock_unlock(&vm->server->rwlock);
+        free(vm);
+    }
 }
 
 void spawn_vm_child(VM *vm, DataCenter *dc, double personal_cores) {
     (void)vm; // To avoid warning.
 
     // TODO: Limit RAM, DISK and use exec with cpulimit.
-    vm->state = VM_STATE_RUNNING;
-    vm->destroyed= 0;
     double cpu_por_maquina = vm->server->total.cpu;
     double cpu_por_vm = vm->type->required.cpu;
     int num_maquinas = (int)dc->num_servers;
@@ -274,38 +272,59 @@ void spawn_vm_child(VM *vm, DataCenter *dc, double personal_cores) {
 int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores) {
     for (size_t i = 0; i < res->num_vms; i++) {
         VM *vm = res->vms[i];
-
+        pthread_rwlock_wrlock(&dc->rwlock);
+        pid_t pid = fork();
         // TODO: Implement fork code. Set VM PID and update VM state to running.
-        if ((vm->pid = fork()) == 0) {
+        if (pid == 0) {
+            
             struct rlimit rl1;
-            rl1.rlim_cur = vm->type->required.ram;
-            rl1.rlim_max = vm->type->required.ram;
+            rl1.rlim_cur = (rlim_t)vm->type->required.ram << 30;
+            rl1.rlim_max = (rlim_t)vm->type->required.ram << 30;
             if (setrlimit(RLIMIT_AS, &rl1) == -1) {
                 printf("Erro ao definir o limite");
-                return 1;
+                exit(1);
             }
             struct rlimit rl2;
-            rl2.rlim_cur = vm->type->required.disk;
-            rl2.rlim_max = vm->type->required.disk;
+            rl2.rlim_cur = (rlim_t)vm->type->required.disk << 30;
+            rl2.rlim_max = (rlim_t)vm->type->required.disk << 30;
             if (setrlimit(RLIMIT_FSIZE, &rl2) == -1) {
                 printf("Erro ao definir o limite");
-                return 1;
+                exit(1);
             }
             spawn_vm_child(vm, dc, personal_cores);
+            exit(1);
         }
+        if(pid < 0){
+            pthread_rwlock_unlock(&dc->rwlock);
+            printf("Fork failed");
+            return 1;
+        }
+        vm->pid = pid;
+        pthread_rwlock_wrlock(&vm->server->rwlock);
+        vm->state = VM_STATE_RUNNING;
+        pthread_rwlock_unlock(&vm->server->rwlock);
+        pthread_rwlock_unlock(&dc->rwlock);
+        
     }
 
     return 0;
 }
 
 void wait_for_all_vms(Reservation *res) {
-    pthread_t tid[res->num_vms];
-    for (size_t i = 0; i < res->num_vms; i++) {
-        VM *vm = res->vms[i];
-        pthread_create(&tid[i], NULL, wait_vm, vm);
-    }
-    for(size_t i = 0; i < res->num_vms; i++){
-        pthread_join(tid[i], NULL);
+    int counter = 0;
+    while(counter < (int)res->num_vms){
+        counter = 0;
+        for(int i = 0; i < (int)res->num_vms; i++){
+            VM *vm = res->vms[i];
+            pthread_rwlock_rdlock(&vm->server->rwlock);
+            if(vm->state == VM_STATE_TERMINATED){
+                counter++;
+            }
+            pthread_rwlock_unlock(&vm->server->rwlock);
+        }
+        if(counter < (int)res->num_vms){
+            datacenter_wait(10);
+        }
     }
 }
 
@@ -358,18 +377,4 @@ size_t sort_and_dedup_server_ptrs(Server *ptrs[], size_t n) {
         }
     }
     return j;
-}
-
-void *wait_vm(void *args){
-    VM *vm = (VM *) args;
-    int status;
-    waitpid(vm->pid, &status, 0);
-    Server *server = vm->server;
-    pthread_rwlock_wrlock(&server->rwlock);
-    Resources finished_resources = vm->type->required; 
-    resources_add(&server->available, finished_resources);
-    pthread_rwlock_unlock(&server->rwlock);
-    vm->state = VM_STATE_TERMINATED;
-    return NULL;
-
 }
