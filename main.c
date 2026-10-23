@@ -21,34 +21,69 @@ typedef struct {
 
 
 void *waitGlobal(void *args){
+    
     DataCenter *dc = (DataCenter*) args;
     int status;
     while(1){
         pid_t pid = wait(&status);
         if(pid < 0){
+            pthread_rwlock_rdlock(&dc->rwlock);
+            int shutdown = dc->shutdown;
+            pthread_rwlock_unlock(&dc->rwlock);
+            if(shutdown){
+                return NULL;
+            }
             datacenter_wait(10);
             continue;
         }
-
+        //remove a vm das vms da reserva, se for a última remove a reserva
+        //ou seja substitui o reservation_destroy
         VM *vm = NULL;
-        pthread_rwlock_rdlock(&dc->rwlock);
-        for(int i = 0; i < (int)dc->num_reservations && vm == NULL; i++){
-            for(int j = 0; j < (int)dc->reservations[i].num_vms;j++){
-                if(dc->reservations[i].vms[j]->pid == pid){
-                    vm = dc->reservations[i].vms[j];
+        pthread_rwlock_wrlock(&dc->rwlock);
+        for(size_t i = 0; i < dc->num_reservations && vm == NULL; i++){
+            Reservation *res = &dc->reservations[i];
+            for(size_t j = 0; j < res->num_vms;j++){
+                if(res->vms[j]->pid == pid){
+                    vm = res->vms[j];
+
+                    memmove(&res->vms[j], &res->vms[j+1], 
+                        (res->num_vms - j - 1) *sizeof(VM *));
+                    res->num_vms--;
+
+                    if(res->num_vms == 0) {
+                        memmove(&dc->reservations[i], &dc->reservations[i+1],
+                        (dc->num_reservations - i - 1) * sizeof(Reservation));
+                        dc->num_reservations--;
+                    }
                     break;
                 }
             }
         }
+        if(vm != NULL){
+            dc->num_running--;
+        }
         pthread_rwlock_unlock(&dc->rwlock);
 
         if(vm == NULL) continue;
-        
-        pthread_rwlock_wrlock(&vm->server->rwlock);
+
+        //devolver recursos
+        Server *server = vm->server;
+        pthread_rwlock_wrlock(&server->rwlock);
         Resources finished_resources = vm->type->required; 
-        resources_add(&vm->server->available, finished_resources);
+        resources_add(&server->available, finished_resources);
         vm->state = VM_STATE_TERMINATED;
-        pthread_rwlock_unlock(&vm->server->rwlock);
+
+        //retirar vm de hosted vms do servidor
+        for(size_t i = 0; i < server->num_hosted_vms; i++){
+            if(server->hosted_vms[i] == vm){
+                memmove(&server->hosted_vms[i], &server->hosted_vms[i+1],
+                (server->num_hosted_vms - i - 1) * sizeof(VM *));
+                server->num_hosted_vms--;
+                break;
+            }
+        }
+        pthread_rwlock_unlock(&server->rwlock);
+        free(vm);
     }
     return NULL;
     
@@ -242,8 +277,8 @@ int main(int argc, char **argv) {
     }
 
     //Garantir que /tmp/Cloudist existe, caso contrário cria-a
-    if(mkdir("/tmp/CloudIST", 0777) == -1 && errno != EEXIST){
-        perror("Failed to create /tmp/CloudIST");
+    if(mkdir("/tmp/CloudIST-117753", 0777) == -1 && errno != EEXIST){
+        perror("Failed to create /tmp/CloudIST-117753");
         return 1;
     }
 
@@ -297,8 +332,20 @@ int main(int argc, char **argv) {
         free(file_name_list[i]);
     }
     free(file_name_list);
-        
+    //Esperar que todas terminem, como o execute já não espera, só o waitGlobal
+    while(1){
+        pthread_rwlock_rdlock(&dc.rwlock);
+        size_t running = dc.num_running;
+        pthread_rwlock_unlock(&dc.rwlock);
+        if(running == 0) break;
+        datacenter_wait(10);
+    }
 
+    pthread_rwlock_wrlock(&dc.rwlock);
+    dc.shutdown = 1;
+    pthread_rwlock_unlock(&dc.rwlock);
+    //Esperar a thread do global
+    pthread_join(tid_global, NULL);
     datacenter_destroy(&dc);
     return 0;
 }

@@ -176,32 +176,42 @@ int reservation_commit(DataCenter *dc, Reservation *reservation) {
     return 0;
 }
 
-Reservation *find_pending_reservation(DataCenter *dc,
-                                      const char *reservation_id) {
-    Reservation *res = NULL;
-    
-    //lock leitura dc
-    pthread_rwlock_rdlock(&dc->rwlock);
+int find_pending_reservation(DataCenter *dc,
+                                    const char *reservation_id, 
+                                    VM **vms, size_t *num_vms) {
+    int found = 0;
+    int ret = 1;
+
+    //lock escrita dc: verifica e marca running 
+    pthread_rwlock_wrlock(&dc->rwlock);
     for (size_t i = 0; i < dc->num_reservations; i++) {
-        if (strcmp(dc->reservations[i].id, reservation_id) == 0) {
-            res = &dc->reservations[i];
+        Reservation *res = &dc->reservations[i];
+        if (strcmp(res->id, reservation_id) == 0) {
+            found = 1;
+            if (res->state == RES_STATE_PENDING){
+                res->state = RES_STATE_RUNNING;
+
+                *num_vms = res->num_vms;
+                for (int j = 0; j < (int)res->num_vms; j++){
+                    vms[j] = res->vms[j];
+                }
+                ret = 0;
+            }
             break;
         }
     }
     pthread_rwlock_unlock(&dc->rwlock);
 
-    if (!res) {
+    if (!found) {
         fprintf(stderr, "Reservation ID %s not found.\n", reservation_id);
-        return NULL;
     }
 
-    if (res->state != RES_STATE_PENDING) {
+    else if (ret != 0) {
         fprintf(stderr, "Reservation ID %s is not in a pending state.\n",
                 reservation_id);
-        return NULL;
     }
 
-    return res;
+    return ret;
 }
 
 void reservation_destroy(DataCenter *dc, Reservation *reservation) {
@@ -268,12 +278,13 @@ void spawn_vm_child(VM *vm, const char *exec_path, DataCenter *dc, double person
     _exit(1);
 }
 
-int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores) {
-    for (size_t i = 0; i < res->num_vms; i++) {
-        VM *vm = res->vms[i];
+int spawn_all_vms(VM **vms, size_t num_vms, const char *reservation_id,
+                    DataCenter *dc, double personal_cores) {
+    for (size_t i = 0; i < num_vms; i++) {
+        VM *vm = vms[i];
         //onde o processo vai correr
         char vm_dir[MAX_PATH_SIZE];
-        snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", res->id, vm->id);
+        snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST-117753/%s/%s", reservation_id, vm->id);
 
         //caminho absoluto do executável
         char exec_abs[MAX_PATH_SIZE];

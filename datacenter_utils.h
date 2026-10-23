@@ -59,8 +59,9 @@ int reservation_commit(DataCenter *dc, Reservation *reservation);
  * @return Pointer to the Reservation if found and RES_STATE_PENDING.
  * @return NULL if not found or not in RES_STATE_PENDING (error is printed).
  */
-Reservation *find_pending_reservation(DataCenter *dc,
-                                      const char *reservation_id);
+int find_pending_reservation(DataCenter *dc,
+                                      const char *reservation_id,
+                                    VM **vms, size_t *num_vms);
 
 /**
  * Frees every VM allocated to the reservation, returns their resources to the
@@ -91,7 +92,7 @@ void spawn_vm_child(VM *vm, const char *exec_path, DataCenter *dc, double person
  * @return 0 on success.
  * @return 1 if any fork() call fails.
  */
-int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores);
+int spawn_all_vms(VM **vms, size_t num_vms, const char *reservation_id, DataCenter *dc, double personal_cores);
 
 /**
  * Blocks until every VM's process has exited, updating each VM's state

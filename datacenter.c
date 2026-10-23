@@ -180,20 +180,25 @@ int datacenter_execute(DataCenter *dc, const char *reservation_id,
         return 1;
     }
 
-    Reservation *res = find_pending_reservation(dc, reservation_id);
-    if (!res)
+    /**
+     * datacenteer_execute apenas starts up as VM'S
+     * não espera acabarem / devolve recursos
+     * não as destrói
+     * não põe o state a finished 
+     * waitGlobal trata disso
+     */
+
+
+    VM *vms[MAX_RESERVATION_VMS];
+    size_t num_vms = 0; 
+    //procura, verifica "pending", "marca running"
+    if(find_pending_reservation(dc, reservation_id, vms, &num_vms) != 0){
         return 1;
+    }
 
-    if (spawn_all_vms(res, dc, personal_cores) != 0)
+    if (spawn_all_vms(vms, num_vms, reservation_id, dc, personal_cores) != 0){
         return 1;
-
-    res->state = RES_STATE_RUNNING;
-    
-    //garantir que todas acabam antes do destroy
-    wait_for_all_vms(res);
-
-    reservation_destroy(dc, res);
-    res->state = RES_STATE_FINISHED;
+    }
 
     return 0;
 }
