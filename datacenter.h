@@ -80,6 +80,9 @@ typedef struct DataCenter {
     size_t num_reservations;
 
     int configured; // Wheter the datacenter is configured or not.
+
+    size_t num_running;     //VM'S com processo vivo
+    int shutdown;           // Para que o waitGlobal possa, ou nao, terminar
     //read write lock 
     pthread_rwlock_t rwlock;
 } DataCenter;

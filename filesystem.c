@@ -58,6 +58,12 @@ int filter_dots(const struct dirent *entry) {
     return 1; // Incluir na lista
 }
 
+int filter_conf(const struct dirent *entry){
+    size_t len = strlen(entry->d_name);
+    //garantir que só ficheiros conf são lidos e que tem algo antes de .conf
+    return len > 5 && strcmp(entry->d_name + len - 5, ".conf") == 0;
+}
+
 int copiar_ficheiros(const char *origem, int out_fd) {
 
     if (out_fd < 0)

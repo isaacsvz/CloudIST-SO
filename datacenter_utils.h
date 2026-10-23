@@ -80,7 +80,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation);
  *
  * @param vm Pointer to the VM being spawned.
  */
-void spawn_vm_child(VM *vm, DataCenter *dc, double personal_cores);
+void spawn_vm_child(VM *vm, const char *exec_path, DataCenter *dc, double personal_cores);
 
 /**
  * Forks one child per VM in the reservation, calling spawn_vm_child()

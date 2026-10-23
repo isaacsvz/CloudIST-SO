@@ -251,8 +251,7 @@ void reservation_destroy(DataCenter *dc, Reservation *reservation) {
     }
 }
 
-void spawn_vm_child(VM *vm, DataCenter *dc, double personal_cores) {
-    (void)vm; // To avoid warning.
+void spawn_vm_child(VM *vm, const char *exec_path, DataCenter *dc, double personal_cores) {
 
     // TODO: Limit RAM, DISK and use exec with cpulimit.
     double cpu_por_maquina = vm->server->total.cpu;
@@ -265,13 +264,28 @@ void spawn_vm_child(VM *vm, DataCenter *dc, double personal_cores) {
     snprintf(limit_str, sizeof(limit_str), "%f", cpu_limit_perc);
 
     execlp("cpulimit", "cpulimit", "-q", "-f", "-l", limit_str, "--",
-           vm->type->exec_path, NULL);
-    fprintf(stderr, "VM execution failed.\n");
+           exec_path, NULL);
+    _exit(1);
 }
 
 int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores) {
     for (size_t i = 0; i < res->num_vms; i++) {
         VM *vm = res->vms[i];
+        //onde o processo vai correr
+        char vm_dir[MAX_PATH_SIZE];
+        snprintf(vm_dir, sizeof(vm_dir), "/tmp/CloudIST/%s/%s", res->id, vm->id);
+
+        //caminho absoluto do executável
+        char exec_abs[MAX_PATH_SIZE];
+
+        if(absolute_path(vm->type->exec_path, exec_abs, sizeof(exec_abs)) != 0) {
+            fprintf(stderr, "Invalid executable path.\n");
+            return 1;
+        }
+        pthread_rwlock_wrlock(&vm->server->rwlock);
+        vm->state = VM_STATE_RUNNING;
+        pthread_rwlock_unlock(&vm->server->rwlock);
+        
         pthread_rwlock_wrlock(&dc->rwlock);
         pid_t pid = fork();
         // TODO: Implement fork code. Set VM PID and update VM state to running.
@@ -281,30 +295,33 @@ int spawn_all_vms(Reservation *res, DataCenter *dc, double personal_cores) {
             rl1.rlim_cur = (rlim_t)vm->type->required.ram << 30;
             rl1.rlim_max = (rlim_t)vm->type->required.ram << 30;
             if (setrlimit(RLIMIT_AS, &rl1) == -1) {
-                printf("Erro ao definir o limite");
-                exit(1);
+                _exit(1);
             }
             struct rlimit rl2;
             rl2.rlim_cur = (rlim_t)vm->type->required.disk << 30;
             rl2.rlim_max = (rlim_t)vm->type->required.disk << 30;
             if (setrlimit(RLIMIT_FSIZE, &rl2) == -1) {
-                printf("Erro ao definir o limite");
-                exit(1);
+                _exit(1);
             }
-            spawn_vm_child(vm, dc, personal_cores);
+
+            if(chdir(vm_dir) == -1){
+                _exit(1);
+            }
+            spawn_vm_child(vm, exec_abs, dc, personal_cores);
             exit(1);
         }
         if(pid < 0){
             pthread_rwlock_unlock(&dc->rwlock);
             printf("Fork failed");
+
+            pthread_rwlock_wrlock(&vm->server->rwlock);
+            vm->state = VM_STATE_RESERVED;
+            pthread_rwlock_unlock(&vm->server->rwlock);
             return 1;
         }
         vm->pid = pid;
-        pthread_rwlock_wrlock(&vm->server->rwlock);
-        vm->state = VM_STATE_RUNNING;
-        pthread_rwlock_unlock(&vm->server->rwlock);
+        dc->num_running++;
         pthread_rwlock_unlock(&dc->rwlock);
-        
     }
 
     return 0;

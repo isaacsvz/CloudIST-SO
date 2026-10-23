@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <errno.h>
 
 
 
@@ -202,8 +203,8 @@ int main(int argc, char **argv) {
 
     if (argc != 8) {
         fprintf(stderr,
-                "Usage: %s <servers> <ram> <disk> <cpus> <input_dir> "
-                "<personal_cpu_cores> <max_threads>\n",
+                "Usage: %s <servers> <ram> <disk> <cpus> "
+                "<personal_cpu_cores> <input_dir> <max_threads>\n",
                 argv[0]);
         return 1;
     }
@@ -219,13 +220,13 @@ int main(int argc, char **argv) {
         parse_size_t_arg(argv[2], &ram) != 0 ||
         parse_size_t_arg(argv[3], &disk) != 0 ||
         parse_double_arg(argv[4], &cpu) != 0 ||
-        parse_double_arg(argv[6], &personal_cores) != 0 ||
+        parse_double_arg(argv[5], &personal_cores) != 0 ||
         parse_size_t_arg(argv[7], &max_threads) != 0) {
         fprintf(stderr, "Invalid command line arguments.\n");
         return 1;
     }
 
-    if (!path_exists(argv[5])) {
+    if (!path_exists(argv[6])) {
         fprintf(stderr, "Invalid input directory.\n");
         return 1;
     }
@@ -240,40 +241,57 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    //Garantir que /tmp/Cloudist existe, caso contrário cria-a
+    if(mkdir("/tmp/CloudIST", 0777) == -1 && errno != EEXIST){
+        perror("Failed to create /tmp/CloudIST");
+        return 1;
+    }
+
     // Cria array de ponteiros para structs dirent
     struct dirent **file_name_list;
-    int n = scandir(argv[5], &file_name_list, filter_dots, alphasort);
-    if(n > (int)max_threads){
-        printf("Too many files for max_threads: %d", (int)max_threads);
-    }
+    int n = scandir(argv[6], &file_name_list, filter_conf, alphasort);
     if (n < 0) {
         perror("Failed to scan input directory");
         return EXIT_FAILURE;
     }
 
     
+    if(max_threads == 0){
+        fprintf(stderr, "max_threads must be at least 1.\n");
+        return 1;
+    }
+    
+    
     pthread_t tid_global;
     pthread_create(&tid_global, NULL, waitGlobal, &dc);
-    pthread_t tid[n];
-    run_file_args args[n];
-    for (int i = 0; i < n; i++) {
-        
-        // Concatenação da dir com o ficheiro para criar o file_path para o open
-        // 256 + 1 -> por causa da barra
-        char file_path[257];
-        snprintf(file_path, sizeof(file_path), "%s/%s", argv[5],
-        file_name_list[i]->d_name);
-        int fd = my_open(file_path);
-        
-        //transformar daqui para baixo numa função para poder chamar pthread com essa função
-        args[i] = (run_file_args){.dc = &dc, .fd = fd, .personal_cores = personal_cores};
-        pthread_create(&tid[i], NULL, run_conf_file, &args[i]);
-    }
-    for(int i = 0; i < n; i++){
-        if(pthread_join(tid[i], NULL) != 0){
-            printf("Error joining thread");
-            return EXIT_FAILURE;
+    pthread_t tid[max_threads];
+    run_file_args args[max_threads];
+    for(int base = 0; base < n; base += (int)max_threads){
+        //ficheiros por lote
+        int lote = n - base;
+        if(lote > (int)max_threads){
+            lote = (int)max_threads;
         }
+        for (int i = 0; i < lote; i++) {
+            
+            // Concatenação da dir com o ficheiro para criar o file_path para o open
+            char file_path[MAX_PATH_SIZE];
+            snprintf(file_path, sizeof(file_path), "%s/%s", argv[6],
+            file_name_list[base + i]->d_name);
+            int fd = my_open(file_path);
+            
+            //transformar daqui para baixo numa função para poder chamar pthread com essa função
+            args[i] = (run_file_args){.dc = &dc, .fd = fd, .personal_cores = personal_cores};
+            pthread_create(&tid[i], NULL, run_conf_file, &args[i]);
+        }
+
+        for(int i = 0; i < lote; i++){
+            if(pthread_join(tid[i], NULL) != 0){
+                printf("Error joining thread\n");
+                return EXIT_FAILURE;
+            }
+        }
+
     }
     for (int i = 0; i < n; i++) {
         free(file_name_list[i]);

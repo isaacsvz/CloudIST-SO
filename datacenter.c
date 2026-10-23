@@ -17,6 +17,9 @@ void datacenter_init(DataCenter *dc) {
     dc->num_reservations = 0;
 
     dc->configured = 0;
+
+    dc->num_running = 0;
+    dc->shutdown = 0;
 }
 
 void datacenter_destroy(DataCenter *dc) {
@@ -121,7 +124,7 @@ int datacenter_reserve(DataCenter *dc, Reservation *reservation) {
     }
 
     //ordenar e tirar repetidos
-    num_envolved_servers = sort_and_dedup_server_ptrs(envolved_servers, reservation->num_vms);
+    num_envolved_servers = sort_and_dedup_server_ptrs(envolved_servers, num_envolved_servers);
     
     // lock todos os servidores involvidos
     for(size_t i = 0; i < num_envolved_servers; i++){
