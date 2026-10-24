@@ -1,6 +1,6 @@
 #define _XOPEN_SOURCE 700
 #define BUFSIZE 64
-#define RESERVATIONS_PATHNAME "/tmp/CloudIST"
+#define RESERVATIONS_PATHNAME "/tmp/CloudIST-117753"
 #define MAX_PATH_SIZE 1024
 
 #include "filesystem.h"
